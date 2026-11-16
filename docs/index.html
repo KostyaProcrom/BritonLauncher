@@ -9,7 +9,7 @@
   <meta property="og:description" content="Игра по нику, Fabric/Forge, моды с Modrinth, любая версия Minecraft." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/icon.svg" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
 
@@ -244,64 +244,67 @@
   </footer>
 
   <!-- ACCOUNT / PLAYERDATA -->
-  <div class="modal" id="account-modal" aria-hidden="true">
-    <div class="modal-backdrop" onclick="closeAccount()"></div>
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="account-title">
-      <button class="modal-close" onclick="closeAccount()" aria-label="Закрыть">✕</button>
-      <h2 class="modal-title" id="account-title">Аккаунт</h2>
-      <p class="modal-sub">PlayerDATA · аккаунты хранятся в этом браузере</p>
-
-      <div id="account-guest">
-        <div class="auth-tabs">
-          <button class="auth-tab active" data-tab="login" onclick="switchTab('login')">Вход</button>
-          <button class="auth-tab" data-tab="register" onclick="switchTab('register')">Регистрация</button>
-        </div>
-
-        <form class="auth-form" id="form-login" onsubmit="doLogin(event)">
-          <label>Ник<input id="login-nick" autocomplete="username" placeholder="Steve" /></label>
-          <label>Пароль<input id="login-pass" type="password" autocomplete="current-password" placeholder="••••" /></label>
-          <button class="btn btn-primary" type="submit">Войти</button>
-        </form>
-
-        <form class="auth-form hidden" id="form-register" onsubmit="doRegister(event)">
-          <label>Ник<input id="reg-nick" autocomplete="username" placeholder="3–16 символов" /></label>
-          <label>Пароль<input id="reg-pass" type="password" autocomplete="new-password" placeholder="минимум 4 символа" /></label>
-          <label>Повтор пароля<input id="reg-pass2" type="password" autocomplete="new-password" placeholder="••••" /></label>
-          <button class="btn btn-primary" type="submit">Создать аккаунт</button>
-        </form>
-
-        <p class="auth-msg" id="auth-msg"></p>
-        <p class="auth-note">Главный администратор сайта: <b>BritonLauncher</b></p>
+  <section class="section section-alt account-section" id="account">
+    <div class="container">
+      <div class="section-head">
+        <h2>Аккаунт</h2>
+        <p class="account-sub">PlayerDATA: регистрация и вход. Аккаунты хранятся в этом браузере.</p>
       </div>
 
-      <div id="account-user" class="hidden">
-        <div class="profile">
-          <div class="profile-avatar" id="profile-avatar">?</div>
-          <div class="profile-info">
-            <div class="profile-nick" id="profile-nick">—</div>
-            <div class="profile-role" id="profile-role">PLAYER</div>
+      <div class="account-card">
+        <div id="account-guest">
+          <div class="auth-tabs">
+            <button class="auth-tab active" data-tab="login" onclick="switchTab('login')">Вход</button>
+            <button class="auth-tab" data-tab="register" onclick="switchTab('register')">Регистрация</button>
           </div>
-          <button class="btn btn-ghost" onclick="doLogout()">Выйти</button>
+
+          <form class="auth-form" id="form-login" onsubmit="doLogin(event)">
+            <label>Ник<input id="login-nick" autocomplete="username" placeholder="Steve" /></label>
+            <label>Пароль<input id="login-pass" type="password" autocomplete="current-password" placeholder="••••" /></label>
+            <button class="btn btn-primary" type="submit">Войти</button>
+          </form>
+
+          <form class="auth-form hidden" id="form-register" onsubmit="doRegister(event)">
+            <label>Ник<input id="reg-nick" autocomplete="username" placeholder="3–16 символов" /></label>
+            <label>Пароль<input id="reg-pass" type="password" autocomplete="new-password" placeholder="минимум 4 символа" /></label>
+            <label>Повтор пароля<input id="reg-pass2" type="password" autocomplete="new-password" placeholder="••••" /></label>
+            <button class="btn btn-primary" type="submit">Создать аккаунт</button>
+          </form>
+
+          <p class="auth-msg" id="auth-msg"></p>
+          <p class="auth-note">Администраторы сайта: <b>BritonLauncher</b>, <b>KostyaKosmos</b></p>
         </div>
 
-        <div id="admin-panel" class="hidden">
-          <h3 class="admin-title">Админ-панель <span class="role-badge admin">ADMIN</span></h3>
-          <div class="admin-table-wrap">
-            <table class="admin-table">
-              <thead>
-                <tr><th>Ник</th><th>Роль</th><th>Создан</th><th>Вход</th><th></th></tr>
-              </thead>
-              <tbody id="admin-players"></tbody>
-            </table>
+        <div id="account-user" class="hidden">
+          <div class="profile">
+            <div class="profile-avatar" id="profile-avatar">?</div>
+            <div class="profile-info">
+              <div class="profile-nick" id="profile-nick">—</div>
+              <div class="profile-role" id="profile-role">PLAYER</div>
+            </div>
+            <button class="btn btn-ghost" onclick="doLogout()">Выйти</button>
           </div>
-          <p class="auth-note">Всего аккаунтов: <b id="admin-count">0</b></p>
-        </div>
 
-        <p class="auth-note" id="user-note">Ты вошёл как игрок.</p>
+          <div id="admin-panel" class="hidden">
+            <h3 class="admin-title">Админ-панель <span class="role-badge admin">ADMIN</span></h3>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr><th>Ник</th><th>Роль</th><th>Создан</th><th>Вход</th><th></th></tr>
+                </thead>
+                <tbody id="admin-players"></tbody>
+              </table>
+            </div>
+            <p class="auth-note">Всего аккаунтов: <b id="admin-count">0</b></p>
+          </div>
+
+          <p class="auth-note" id="user-note">Ты вошёл как игрок.</p>
+        </div>
       </div>
     </div>
-  </div>
+  </section>
 
-  <script src="script.js"></script>
+  <script src="script.js?v=3"></script>
 </body>
 </html>
+
