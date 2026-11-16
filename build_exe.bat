@@ -1,21 +1,20 @@
 @echo off
-chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 
-echo === BritonLauncher: СЃР±РѕСЂРєР° .exe ===
+echo === BritonLauncher: build .exe ===
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo Python РЅРµ РЅР°Р№РґРµРЅ. РЈСЃС‚Р°РЅРѕРІРё Python 3.10+ Рё РґРѕР±Р°РІСЊ РµРіРѕ РІ PATH.
+    echo Python not found. Install Python 3.10+ and add it to PATH.
     pause
     exit /b 1
 )
 
 if not exist ".venv\Scripts\python.exe" (
-    echo РЎРѕР·РґР°СЋ РІРёСЂС‚СѓР°Р»СЊРЅРѕРµ РѕРєСЂСѓР¶РµРЅРёРµ .venv ...
+    echo Creating virtual environment .venv ...
     python -m venv .venv
     if errorlevel 1 (
-        echo РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ venv.
+        echo Failed to create venv.
         pause
         exit /b 1
     )
@@ -23,16 +22,16 @@ if not exist ".venv\Scripts\python.exe" (
 
 set "PY=.venv\Scripts\python.exe"
 
-echo РЈСЃС‚Р°РЅР°РІР»РёРІР°СЋ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё...
-"%PY%" -m pip install -q --upgrade pip
-"%PY%" -m pip install -q -r requirements.txt pyinstaller
+echo Installing dependencies...
+"%PY%" -m pip install -q --disable-pip-version-check --no-cache-dir --upgrade pip
+"%PY%" -m pip install -q --disable-pip-version-check --no-cache-dir -r requirements.txt pyinstaller
 if errorlevel 1 (
-    echo РћС€РёР±РєР° СѓСЃС‚Р°РЅРѕРІРєРё Р·Р°РІРёСЃРёРјРѕСЃС‚РµР№.
+    echo Failed to install dependencies.
     pause
     exit /b 1
 )
 
-echo РЎРѕР±РёСЂР°СЋ BritonLauncher.exe ...
+echo Building BritonLauncher.exe ...
 "%PY%" -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --name BritonLauncher ^
   --collect-all webview ^
@@ -42,13 +41,13 @@ echo РЎРѕР±РёСЂР°СЋ BritonLauncher.exe ...
   --hidden-import webview.platforms.edgechromium ^
   main.py
 if errorlevel 1 (
-    echo РЎР±РѕСЂРєР° РЅРµ СѓРґР°Р»Р°СЃСЊ. РЎРјРѕС‚СЂРё РІС‹РІРѕРґ РІС‹С€Рµ.
+    echo Build failed. See output above.
     pause
     exit /b 1
 )
 
 echo.
-echo Р“РѕС‚РѕРІРѕ: dist\BritonLauncher.exe
+echo Done: dist\BritonLauncher.exe
 echo.
 pause
 endlocal
