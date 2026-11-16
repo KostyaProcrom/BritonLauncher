@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Виртуальные окружения
+.venv/
+venv/
+env/
+
+# PyInstaller
+build/
+dist/
+*.spec
+*.manifest
+
+# Логи и временные файлы
+*.log
+*.tmp
+logs/
+
+# Локальные данные лаунчера (не должны попасть в репозиторий)
+account.json
+config.json
+nickname.txt
+servers.dat
+
+# Редакторы / ОС
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

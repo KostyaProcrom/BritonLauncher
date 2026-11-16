@@ -1,0 +1,32 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5d9b3f"/>
+      <stop offset="1" stop-color="#4a7e32"/>
+    </linearGradient>
+    <linearGradient id="dirt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8b5a2b"/>
+      <stop offset="1" stop-color="#6b3e1a"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#bg)" stroke="#c5a059" stroke-width="3"/>
+  <g>
+    <rect x="34" y="34" width="60" height="60" fill="url(#dirt)" stroke="#5d4037" stroke-width="3"/>
+    <rect x="34" y="34" width="60" height="14" fill="url(#grass)" stroke="#3e6b21" stroke-width="3"/>
+    <rect x="42" y="48" width="8" height="8" fill="#3e6b21"/>
+    <rect x="58" y="48" width="8" height="8" fill="#3e6b21"/>
+    <rect x="74" y="48" width="8" height="8" fill="#3e6b21"/>
+  </g>
+  <g fill="url(#gold)" stroke="#b45309" stroke-width="2.5" stroke-linejoin="round">
+    <path d="M52 68 L64 56 L70 50 L76 56 L82 68 L79 82 L70 90 L58 90 L49 82 Z"/>
+    <line x1="64" y1="56" x2="79" y2="68" stroke="#b45309" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>
