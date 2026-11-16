@@ -13,7 +13,7 @@ import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
 
 CURRENT_VERSION = "3.7.0"
-GITHUB_REPO = "username/britonlauncher"
+GITHUB_REPO = "KostyaProcrom/BritonLauncher"
 UPDATE_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 DEFAULT_REDIRECT = "https://login.microsoftonline.com/common/oauth2/nativeclient"

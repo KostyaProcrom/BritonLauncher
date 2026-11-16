@@ -103,7 +103,7 @@ docs/                 сайт для GitHub Pages
 
 1. Settings → Pages → **Source: Deploy from a branch**.
 2. Branch: `main`, folder: **`/docs`**.
-3. В `docs/script.js` замени `const REPO = "your-username/britonlauncher";` на свой репозиторий.
+3. Сайт откроется по адресу `https://kostyaprocrom.github.io/BritonLauncher/`.
 
 ## Правовая информация
 

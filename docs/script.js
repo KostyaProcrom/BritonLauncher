@@ -3,7 +3,7 @@
 // =========================================================
 
 // 👉 ЗАМЕНИ на свой репозиторий: "ник/репозиторий"
-const REPO = "your-username/britonlauncher";
+const REPO = "KostyaProcrom/BritonLauncher";
 
 const repoUrl = `https://github.com/${REPO}`;
 const releasesUrl = `${repoUrl}/releases/latest`;
