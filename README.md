@@ -6,8 +6,9 @@
 
 ## Возможности
 
-- 🔐 **Вход через Microsoft** — официальный OAuth 2.0 (Authorization Code + PKCE), Xbox Live / XSTS, проверка владения игрой.
-- 👤 **Офлайн-режим** — можно играть по нику без аккаунта.
+- 👤 **Аккаунты сайта** — регистрация и вход на сайте проекта, вход в лаунчер по коду с сайта.
+- 🛡️ **Роли и админ-панель** — главный админ `KostyaKosmos`, админ `BritonLauncher`; панель управления аккаунтами на сайте и раздел «Админка» в лаунчере.
+- 🎮 **Офлайн-режим** — можно играть по нику без аккаунта.
 - 🧩 **Fabric и Forge** — установка модлоадеров одной кнопкой под выбранную версию.
 - 📦 **Modrinth внутри** — поиск и установка модов, ресурспаков и шейдеров.
 - 🎚️ **Любая релизная версия** Minecraft и настройка оперативной памяти (`4G`, `2048M`).
@@ -23,7 +24,7 @@
 
 1. Скачай `BritonLauncher.exe` со страницы [Releases](../../releases/latest).
 2. Запусти файл.
-3. Войди через Microsoft или введи ник и жми «Играть».
+3. Введи ник и жми «Играть». Для аккаунта сайта: сайт → «Аккаунт» → «Получить код для лаунчера», затем в лаунчере «Войти по коду».
 
 Ничего дополнительно ставить не нужно — все зависимости внутри `.exe`.
 
@@ -54,29 +55,30 @@ pyinstaller --noconfirm --onefile --windowed ^
   main.py
 ```
 
-## Вход через Microsoft (свой Azure App)
+## Вход через сайт
 
-Токен нельзя получить без собственного Azure-приложения — чужой `client_id` использовать нельзя.
+Аккаунты создаются на сайте BritonLauncher (раздел «Аккаунт»). Пароли хранятся в браузере
+в виде соли и SHA-256, на сервер ничего не отправляется — это клиентские аккаунты сайта.
 
-1. [Azure Portal](https://portal.azure.com) → **Microsoft Entra ID → App registrations → New registration**.
-2. Supported account types: **Personal Microsoft accounts**.
-3. **Authentication → Add platform → Mobile and desktop applications**, redirect URI:
-   ```
-   https://login.microsoftonline.com/common/oauth2/nativeclient
-   ```
-4. Скопируй **Application (client) ID**.
-5. Новым приложениям нужно одобрение доступа к Minecraft API: https://aka.ms/mce-reviewappid
-6. Вставь `Client ID` в **Настройках** лаунчера (или запусти `python microsoft_login.py <CLIENT_ID>`).
+1. Открой сайт → «Аккаунт» → зарегистрируйся или войди.
+2. Нажми **«Получить код для лаунчера»** и скопируй код.
+3. В лаунчере нажми **«Войти по коду»**, вставь код и войди.
 
-Redirect URI по умолчанию уже прописан в лаунчере и должен совпадать с настройкой Azure-приложения.
+Код подписан HMAC-SHA256 и действует 7 дней. Роль (игрок / админ / главный админ)
+определяется по нику и подписи. Управление аккаунтами доступно администраторам
+в разделе «Админка» лаунчера (открывает админ-панель сайта).
+
+> Важно: это клиентская схема без сервера. Секрет подписи и база аккаунтов находятся
+> в браузере/исходниках, поэтому защита рассчитана на честных пользователей, а не на
+> злоумышленника с доступом к файлам. Для настоящей авторизации нужен сервер (Supabase и т.п.).
 
 ## Где хранятся данные
 
 ```
 %LOCALAPPDATA%\.britonlauncher\
-├── config.json        настройки
+├── config.json        настройки + аккаунт сайта
 ├── nickname.txt       сохранённый ник
-├── account.json       токены Microsoft (только локально)
+├── account.json       старые токены Microsoft (если остались)
 ├── servers.dat        список серверов
 ├── mods\
 ├── resourcepacks\
@@ -84,13 +86,14 @@ Redirect URI по умолчанию уже прописан в лаунчере
 └── custom_menu\index.html
 ```
 
-`account.json` никогда не отправляется наружу и используется только для запуска игры.
+Аккаунты сайта хранятся в браузере (`localStorage`), а в лаунчере — только ник и роль
+в `config.json`. Пароли на сайт не передаются: хранится соль и SHA-256.
 
 ## Структура проекта
 
 ```
-main.py               лаунчер (GUI + логика)
-microsoft_login.py    отдельный скрипт получения токена
+main.py               лаунчер (GUI + логика + вход по коду с сайта)
+microsoft_login.py    старый отдельный скрипт токена (не используется интерфейсом)
 requirements.txt      зависимости Python
 build_exe.bat         сборка .exe
 run.bat               быстрый запуск из исходников
@@ -99,26 +102,23 @@ docs/                 сайт для GitHub Pages
 
 ## Сайт (GitHub Pages)
 
-Сайт лежит в `docs/` и публикуется так:
-
-1. Settings → Pages → **Source: Deploy from a branch**.
-2. Branch: `main`, folder: **`/docs`**.
-3. Сайт откроется по адресу `https://kostyaprocrom.github.io/BritonLauncher/`.
+Сайт лежит в `docs/` и публикуется через GitHub Actions (`.github/workflows/pages.yml`):
+каждый пуш в `main` пересобирает страницу. Адрес:
+`https://kostyaprocrom.github.io/BritonLauncher/`.
 
 ## Правовая информация
 
 Лицензия на исходный код не предоставляется: все права сохранены за автором.
 
 - Лаунчер не обходит и не отключает аутентификацию, проверку владения игрой или лицензионные проверки.
-- Аккаунты без купленного Minecraft не могут запустить игру в online-режиме.
-- Пароль Microsoft никогда не запрашивается и не хранится.
+- Для игры в online-режиме нужен официальный аккаунт Minecraft.
+- Пароли сайта не передаются в лаунчер: он получает только ник и роль по подписанному коду.
 
 ### English summary
 
-BritonLauncher is a free custom Minecraft launcher for Windows. It authenticates users
-via the standard Microsoft OAuth 2.0 authorization code flow with PKCE (public client,
-no client secret), then Xbox Live / XSTS and the official Minecraft Services API, and
-verifies game ownership before allowing launch. It does not bypass authentication,
-ownership or license checks. Tokens are stored only locally on the user's machine.
-It can also install official game versions, Fabric/Forge loaders, and download
-mods/resource packs/shaders from Modrinth.
+BritonLauncher is a free custom Minecraft launcher for Windows. Accounts are created on the
+project website (browser-local, salted SHA-256 passwords). The launcher accepts a signed
+HMAC code from the website to learn the nickname and role (player/admin), then launches the
+game offline by nickname. It can also install official game versions, Fabric/Forge loaders,
+and download mods/resource packs/shaders from Modrinth. It does not bypass authentication,
+ownership or license checks.

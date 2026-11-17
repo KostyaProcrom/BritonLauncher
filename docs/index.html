@@ -9,7 +9,7 @@
   <meta property="og:description" content="Игра по нику, Fabric/Forge, моды с Modrinth, любая версия Minecraft." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/icon.svg" />
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
 
@@ -289,6 +289,19 @@
             <button class="btn btn-ghost" onclick="doLogout()">Выйти</button>
           </div>
 
+          <div class="launcher-code-box">
+            <h3 class="admin-title">Вход в лаунчер</h3>
+            <p class="auth-note">Получи код и вставь его в лаунчер: «Войти по коду».</p>
+            <button class="btn btn-primary" onclick="makeLauncherCode()">Получить код для лаунчера</button>
+            <div class="launcher-code-result hidden" id="launcher-code-result">
+              <textarea id="launcher-code" readonly rows="3" spellcheck="false"></textarea>
+              <div class="launcher-code-actions">
+                <button class="mini-btn" onclick="copyLauncherCode()">Скопировать</button>
+                <span class="auth-note" id="launcher-code-status"></span>
+              </div>
+            </div>
+          </div>
+
           <div id="admin-panel" class="hidden">
             <h3 class="admin-title">Админ-панель <span class="role-badge admin">ADMIN</span></h3>
             <div class="admin-table-wrap">
@@ -308,7 +321,7 @@
     </div>
   </section>
 
-  <script src="script.js?v=4"></script>
+  <script src="script.js?v=5"></script>
 </body>
 </html>
 

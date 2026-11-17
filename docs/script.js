@@ -62,6 +62,9 @@ if (yearEl) yearEl.textContent = new Date().getFullYear();
 const PD_KEY = 'britonlauncher.playerdata';
 const SESSION_KEY = 'britonlauncher.session';
 const ADMINS = ['KostyaKosmos', 'BritonLauncher'];
+// Подпись кода для лаунчера. Секрет виден в исходниках сайта — это защита от
+// случайной подмены, а не настоящая серверная авторизация.
+const LAUNCHER_SECRET = '577b977f8870b4a173026dc3ca5962300ad353f38cb0a4ba9464b41f4daba6b3';
 
 function isAdminNick(nick) {
   const low = String(nick || '').toLowerCase();
@@ -98,6 +101,57 @@ function isAdminNick(nick) {
 
 function isMainAdmin(nick) {
   return String(nick || '').toLowerCase() === ADMINS[0].toLowerCase();
+}
+
+/* ---------- код для лаунчера ---------- */
+function b64url(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function makeLauncherCode() {
+  const me = currentPlayer();
+  if (!me) return;
+  if (!crypto?.subtle) return;
+
+  const status = document.getElementById('launcher-code-status');
+  if (status) status.textContent = 'Генерация...';
+
+  const payload = {
+    n: me.nick,
+    r: me.role,
+    m: isMainAdmin(me.nick) ? 1 : 0,
+    t: Date.now(),
+  };
+  const payloadB64 = b64url(new TextEncoder().encode(JSON.stringify(payload)));
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(LAUNCHER_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadB64));
+  const code = 'BLS1.' + payloadB64 + '.' + b64url(new Uint8Array(sig));
+
+  document.getElementById('launcher-code').value = code;
+  document.getElementById('launcher-code-result').classList.remove('hidden');
+  if (status) status.textContent = 'Код действует 7 дней.';
+}
+
+async function copyLauncherCode() {
+  const el = document.getElementById('launcher-code');
+  const status = document.getElementById('launcher-code-status');
+  if (!el || !el.value) return;
+  try {
+    await navigator.clipboard.writeText(el.value);
+    if (status) status.textContent = 'Скопировано ✓';
+  } catch (e) {
+    el.select();
+    document.execCommand('copy');
+    if (status) status.textContent = 'Скопировано ✓';
+  }
 }
 
 function roleOf(nick, player) {

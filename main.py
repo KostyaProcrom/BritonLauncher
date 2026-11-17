@@ -5,6 +5,10 @@ import threading
 import os
 import json
 import re
+import base64
+import hmac
+import hashlib
+import time
 import requests
 import nbtlib
 from nbtlib import Compound, List, String, Byte
@@ -12,9 +16,14 @@ import webbrowser
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
 
-CURRENT_VERSION = "3.7.0"
+CURRENT_VERSION = "3.8.0"
 GITHUB_REPO = "KostyaProcrom/BritonLauncher"
 UPDATE_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+
+SITE_URL = "https://kostyaprocrom.github.io/BritonLauncher/"
+LAUNCHER_SECRET = "577b977f8870b4a173026dc3ca5962300ad353f38cb0a4ba9464b41f4daba6b3"
+CODE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+ADMIN_NICKS = {"kostyakosmos": "main", "britonlauncher": "admin"}
 
 DEFAULT_REDIRECT = "https://login.microsoftonline.com/common/oauth2/nativeclient"
 
@@ -65,7 +74,7 @@ def load_config():
             pass
     return {"theme": "redsea", "ram": "4G", "nickname": "", "version": "1.20.1",
             "modloader": "Vanilla", "show_console": False, "use_custom_menu": False,
-            "client_id": "", "redirect_uri": DEFAULT_REDIRECT}
+            "client_id": "", "redirect_uri": DEFAULT_REDIRECT, "site_account": {}}
 
 
 def save_config(cfg):
@@ -132,11 +141,65 @@ def sanitize_ram(ram):
     return ram
 
 
+# ==================== ВХОД ЧЕРЕЗ САЙТ ====================
+def _b64url_encode(data):
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _b64url_decode(text):
+    text = (text or "").strip()
+    pad = "=" * (-len(text) % 4)
+    return base64.urlsafe_b64decode(text + pad)
+
+
+def verify_launcher_code(code):
+    """Проверяет код с сайта и возвращает данные аккаунта.
+
+    Формат: BLS1.<base64url(json)>.<base64url(HMAC-SHA256)>
+    """
+    code = (code or "").strip().replace("\n", "").replace("\r", "")
+    parts = code.split(".")
+    if len(parts) != 3 or parts[0] != "BLS1":
+        raise ValueError("Неверный формат кода")
+
+    payload_b64, sig_b64 = parts[1], parts[2]
+    expected = hmac.new(
+        LAUNCHER_SECRET.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256
+    ).digest()
+    if not hmac.compare_digest(_b64url_encode(expected), sig_b64):
+        raise ValueError("Подпись кода не совпадает")
+
+    try:
+        payload = json.loads(_b64url_decode(payload_b64).decode("utf-8"))
+    except Exception:
+        raise ValueError("Код повреждён")
+
+    nick = str(payload.get("n", "")).strip()
+    if not re.match(r"^[A-Za-z0-9_]{3,16}$", nick):
+        raise ValueError("Некорректный ник в коде")
+
+    issued = int(payload.get("t", 0) or 0)
+    if issued <= 0 or int(time.time() * 1000) - issued > CODE_TTL_MS:
+        raise ValueError("Код устарел — получи новый на сайте")
+
+    role = payload.get("r") if payload.get("r") in ("admin", "player") else "player"
+    fixed = ADMIN_NICKS.get(nick.lower())
+    if fixed:
+        role = "admin"
+    return {
+        "nick": nick,
+        "role": role,
+        "main": fixed == "main",
+        "login_at": time.strftime("%d.%m.%Y %H:%M"),
+    }
+
+
 config = load_config()
 config.setdefault("theme", "redsea")
 config.setdefault("use_custom_menu", False)
 config.setdefault("client_id", "")
 config.setdefault("redirect_uri", DEFAULT_REDIRECT)
+config.setdefault("site_account", {})
 _saved_nick = load_nickname()
 if _saved_nick:
     config["nickname"] = _saved_nick
@@ -307,6 +370,49 @@ class Api:
             save_config(config)
         self._safe_eval(f"applyTheme({json.dumps(theme)});")
         return {"ok": True, "theme": theme}
+
+    # ---------- Вход через сайт ----------
+    def get_site_account(self):
+        with _cfg_lock:
+            acc = dict(config.get("site_account") or {})
+        if not acc.get("nick"):
+            return {"logged_in": False, "site_url": SITE_URL}
+        return {
+            "logged_in": True,
+            "nick": acc.get("nick", ""),
+            "role": acc.get("role", "player"),
+            "main": bool(acc.get("main")),
+            "login_at": acc.get("login_at", ""),
+            "site_url": SITE_URL,
+        }
+
+    def site_open(self):
+        try:
+            webbrowser.open(SITE_URL + "#account")
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def site_login(self, code):
+        try:
+            acc = verify_launcher_code(code)
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        except Exception as e:
+            return {"ok": False, "error": f"Не удалось прочитать код: {e}"}
+        with _cfg_lock:
+            config["site_account"] = acc
+            config["nickname"] = acc["nick"]
+            save_config(config)
+        save_nickname(acc["nick"])
+        self._set_status(f"Вход через сайт: {acc['nick']}", "#22c55e", "✅")
+        return {"ok": True, **acc}
+
+    def site_logout(self):
+        with _cfg_lock:
+            config["site_account"] = {}
+            save_config(config)
+        return {"ok": True}
 
     # ---------- Microsoft авторизация ----------
     def _ms_creds(self):
@@ -690,12 +796,18 @@ html, body { height: 100%; background: var(--body-bg); color: var(--text); font-
 .brand-logo { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, var(--grad-1), var(--grad-2)); display: grid; place-items: center; font-weight: 800; font-size: 17px; color: white; box-shadow: 0 6px 22px var(--accent-soft); }
 .brand-name { font-weight: 700; font-size: 15px; }
 .brand-ver { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 4px; }
-.win-btns { margin-left: auto; display: flex; gap: 4px; }
+.title-account { margin-left: auto; margin-right: 8px; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: var(--accent-soft); border: 1px solid var(--glass-border); color: var(--text); font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+.title-account:hover { border-color: var(--accent); }
+.title-account .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-mute); flex-shrink: 0; }
+.title-account.admin .dot { background: var(--accent); }
+.title-account .role { font-size: 9px; letter-spacing: 0.5px; color: var(--accent); font-weight: 800; }
+.win-btns { margin-left: 0; display: flex; gap: 4px; }
 .win-btn { width: 44px; height: 36px; background: transparent; border: none; color: var(--text-dim); font-size: 14px; font-weight: 700; border-radius: 10px; cursor: pointer; transition: all 0.15s; display: grid; place-items: center; }
 .win-btn:hover { background: rgba(128,128,128,0.15); color: var(--text); }
 .win-btn.close:hover { background: #c42b1c; color: white; }
 .container { display: flex; gap: 16px; height: calc(100vh - 57px); padding: 16px; }
 .nav-bar { width: 84px; background: var(--glass); backdrop-filter: blur(14px); border: 1px solid var(--glass-border); border-radius: 22px; padding: 14px 8px; display: flex; flex-direction: column; gap: 10px; align-items: center; overflow-y: auto; }
+.nav-ver { margin-top: auto; font-size: 10px; font-weight: 800; color: var(--text-mute); letter-spacing: 0.4px; padding: 6px 0 2px; }
 .nav-item { width: 60px; padding: 10px 0 8px; background: transparent; border: none; border-radius: 16px; color: var(--text-mute); font-size: 10px; font-weight: 600; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: all 0.18s; font-family: inherit; }
 .nav-item .ico { width: 22px; height: 22px; }
 .nav-item:hover { background: rgba(128,128,128,0.1); color: var(--text); }
@@ -729,6 +841,15 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .account-head { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--grad-1), var(--grad-2)); display: grid; place-items: center; font-weight: 800; color: #fff; flex-shrink: 0; }
 .account-name { font-weight: 700; color: var(--green); }
 .account-box .spacer { flex: 1; }
+.account-role { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; background: rgba(197, 160, 89, 0.18); color: var(--accent); }
+.site-login-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.site-login-row input { flex: 1; min-width: 180px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--glass-border); background: var(--bg-soft); color: var(--text); font: inherit; font-size: 12px; outline: none; }
+.site-login-row input:focus { border-color: var(--accent); }
+.site-hint { color: var(--text-mute); font-size: 11px; margin-top: 6px; }
+.admin-card { background: var(--bg-soft); border: 1px solid var(--glass-border); border-radius: 16px; padding: 16px 18px; margin-bottom: 18px; display: grid; gap: 10px; max-width: 520px; }
+.admin-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--text-dim); }
+.admin-row b { color: var(--text); }
+.admin-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
 .ms-input-row { display: flex; gap: 8px; margin-top: 8px; }
 .page-title { font-size: 24px; font-weight: 800; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
 .page-title .grad { background: linear-gradient(135deg, var(--grad-1), var(--grad-2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
@@ -780,8 +901,10 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
   <div class="brand">
     <div class="brand-logo">B</div>
     <div class="brand-name">BritonLauncher</div>
-    <div class="brand-ver">v3.7.0</div>
   </div>
+  <button class="title-account" id="title-account" onclick="titleAccountClick()" title="Войти через сайт">
+    <span class="dot"></span><span class="ta-nick">Войти</span>
+  </button>
   <div class="win-btns">
     <button class="win-btn" onclick="pywebview.api.minimize()">—</button>
     <button class="win-btn" onclick="pywebview.api.maximize()">□</button>
@@ -807,10 +930,15 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg>
       Шейдеры
     </button>
+    <button class="nav-item" data-page="admin" id="nav-admin" style="display:none" onclick="showPage('admin')">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+      Админка
+    </button>
     <button class="nav-item" data-page="settings" onclick="showPage('settings')">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       Настройки
     </button>
+    <div class="nav-ver" title="Версия лаунчера">v3.8.0</div>
   </div>
   <div class="content" id="content">
     <iframe id="custom-menu-iframe"></iframe>
@@ -869,43 +997,122 @@ async function startGame(serverIp = null) {
   await window.pywebview.api.launch_game(nick, state.version, state.loader, cfg.ram, cfg.show_console, serverIp);
 }
 
-async function refreshAccount() {
-  const box = document.getElementById('account-box');
-  if (!box) return;
-  const acc = await window.pywebview.api.get_account();
-  if (acc.logged_in) {
-    box.innerHTML = '<div class="account-head">' + escapeHtml((acc.name || '?').charAt(0).toUpperCase()) + '</div>'
-      + '<div>Вход выполнен: <span class="account-name">' + escapeHtml(acc.name) + '</span></div>'
-      + '<div class="spacer"></div>'
-      + '<button class="btn" onclick="msLogout()">Выйти</button>';
+function updateAdminNav(acc) {
+  const nav = document.getElementById('nav-admin');
+  if (nav) nav.style.display = acc && acc.logged_in && acc.role === 'admin' ? 'flex' : 'none';
+}
+
+function updateTitleAccount(acc) {
+  const el = document.getElementById('title-account');
+  if (!el) return;
+  window.__titleAcc = acc || null;
+  if (acc && acc.logged_in) {
+    el.classList.toggle('admin', acc.role === 'admin');
+    el.innerHTML = '<span class="dot"></span><span class="ta-nick">' + escapeHtml(acc.nick) + '</span>'
+      + (acc.role === 'admin' ? '<span class="role">' + (acc.main ? 'ГЛАВНЫЙ АДМИН' : 'АДМИН') + '</span>' : '');
+    el.title = acc.role === 'admin' ? 'Открыть админ-панель' : 'Аккаунт сайта';
   } else {
-    box.innerHTML = '<div>Аккаунт: <b>офлайн</b> (по нику)</div><div class="spacer"></div>'
-      + '<button class="btn primary" onclick="msStart()">Войти через Microsoft</button>';
+    el.classList.remove('admin');
+    el.innerHTML = '<span class="dot"></span><span class="ta-nick">Войти</span>';
+    el.title = 'Войти через сайт';
   }
 }
-async function msStart() {
-  const res = await window.pywebview.api.ms_start();
-  if (!res.ok) { showToast('Ошибка: ' + res.error); return; }
+
+function titleAccountClick() {
+  const acc = window.__titleAcc;
+  if (acc && acc.logged_in && acc.role === 'admin') {
+    showPage('admin');
+    return;
+  }
+  showPage('launch').then(() => {
+    setTimeout(() => document.getElementById('site-code')?.focus(), 250);
+  });
+}
+
+function roleLabel(acc) {
+  if (!acc || !acc.logged_in || acc.role !== 'admin') return 'ИГРОК';
+  return acc.main ? 'ГЛАВНЫЙ АДМИН' : 'АДМИН';
+}
+
+async function refreshAccount() {
+  const acc = await window.pywebview.api.get_site_account();
+  updateAdminNav(acc);
+  updateTitleAccount(acc);
   const box = document.getElementById('account-box');
-  box.innerHTML = '<div style="flex:1">'
-    + '<div>1. В открывшемся браузере войди в Microsoft.</div>'
-    + '<div>2. Скопируй URL, на который тебя перебросило (там есть <b>?code=...</b>).</div>'
-    + '<div class="ms-input-row"><input id="ms-url" placeholder="https://...?code=..." />'
-    + '<button class="btn green" onclick="msFinish()">Завершить</button></div>'
-    + '</div>';
+  if (!box) return;
+  if (acc.logged_in) {
+    box.innerHTML = '<div class="account-head">' + escapeHtml(acc.nick.charAt(0).toUpperCase()) + '</div>'
+      + '<div>Вход через сайт: <span class="account-name">' + escapeHtml(acc.nick) + '</span>'
+      + '<span class="account-role">' + roleLabel(acc) + '</span></div>'
+      + '<div class="spacer"></div>'
+      + (acc.role === 'admin' ? '<button class="btn" onclick="goAdmin()">Админ-панель</button>' : '')
+      + '<button class="btn" onclick="siteLogout()">Выйти</button>';
+  } else {
+    box.innerHTML = '<div style="flex:1">'
+      + '<div>Аккаунт сайта: <b>не выполнен</b></div>'
+      + '<div class="site-login-row"><input id="site-code" placeholder="Вставь код с сайта" spellcheck="false" />'
+      + '<button class="btn green" onclick="siteLogin()">Войти по коду</button>'
+      + '<button class="btn" onclick="siteOpen()">Открыть сайт</button></div>'
+      + '<div class="site-hint">Сайт → раздел «Аккаунт» → «Получить код для лаунчера».</div>'
+      + '</div>';
+  }
 }
-async function msFinish() {
-  const url = (document.getElementById('ms-url')?.value || '').trim();
-  if (!url) { showToast('Вставь URL после входа'); return; }
-  showToast('Обмениваю код на токен...');
-  const res = await window.pywebview.api.ms_finish(url);
-  if (res.ok) { showToast('Вход выполнен: ' + res.name); refreshAccount(); }
-  else { showToast('Ошибка: ' + res.error); }
+
+async function siteOpen() {
+  await window.pywebview.api.site_open();
+  showToast('Открой сайт, войди и получи код для лаунчера');
 }
-async function msLogout() {
-  await window.pywebview.api.ms_logout();
+
+async function siteLogin() {
+  const code = (document.getElementById('site-code')?.value || '').trim();
+  if (!code) { showToast('Вставь код с сайта'); return; }
+  const res = await window.pywebview.api.site_login(code);
+  if (res.ok) {
+    showToast('Вход выполнен: ' + res.nick);
+    refreshAccount();
+    if (document.body.dataset.activePage === 'admin') renderAdminPage();
+  } else {
+    showToast('Ошибка: ' + res.error);
+  }
+}
+
+async function siteLogout() {
+  await window.pywebview.api.site_logout();
+  updateAdminNav(null);
   showToast('Вы вышли из аккаунта');
-  refreshAccount();
+  if (document.body.dataset.activePage === 'admin') showPage('launch');
+  else refreshAccount();
+}
+
+function goAdmin() { showPage('admin'); }
+
+async function renderAdminPage() {
+  const acc = await window.pywebview.api.get_site_account();
+  const content = document.getElementById('content');
+  content.style.padding = '28px 32px';
+  if (!acc.logged_in || acc.role !== 'admin') {
+    content.innerHTML = '<div class="page-title"><span class="grad">Админ-панель</span></div>'
+      + '<div class="page-sub">Доступ только для администраторов сайта.</div>';
+    return;
+  }
+  content.innerHTML = `
+    <div class="page-title"><span class="grad">Админ-панель</span></div>
+    <div class="page-sub">Аккаунт сайта и управление игроками</div>
+    <div class="admin-card">
+      <div class="admin-row"><span>Ник</span><b>${escapeHtml(acc.nick)}</b></div>
+      <div class="admin-row"><span>Роль</span><b>${acc.main ? 'Главный администратор' : 'Администратор'}</b></div>
+      <div class="admin-row"><span>Вход</span><b>${escapeHtml(acc.login_at || '—')}</b></div>
+    </div>
+    <div class="admin-actions">
+      <button class="btn primary" onclick="openSiteAdmin()">Открыть админ-панель на сайте</button>
+      <button class="btn" onclick="siteLogout()">Выйти</button>
+    </div>
+    <div class="page-status">Аккаунты хранятся в браузере на сайте. Управление игроками — там же, в разделе «Аккаунт».</div>`;
+}
+
+async function openSiteAdmin() {
+  await window.pywebview.api.site_open();
+  showToast('Открыл сайт — раздел «Аккаунт»');
 }
 
 async function showPage(page) {
@@ -914,8 +1121,13 @@ async function showPage(page) {
   selectedItem = null;
   selectedType = null;
 
-  const iframe = document.getElementById('custom-menu-iframe');
   const content = document.getElementById('content');
+  let iframe = document.getElementById('custom-menu-iframe');
+  if (!iframe) {
+    iframe = document.createElement('iframe');
+    iframe.id = 'custom-menu-iframe';
+    content.appendChild(iframe);
+  }
 
   iframe.style.display = 'none';
   iframe.srcdoc = '';
@@ -933,7 +1145,8 @@ async function showPage(page) {
     }
   } else {
     content.style.padding = '28px 32px';
-    if (page === 'settings') renderSettings();
+    if (page === 'admin') renderAdminPage();
+    else if (page === 'settings') renderSettings();
     else renderSearchPage(page);
   }
 }
@@ -1071,7 +1284,7 @@ async function renderSettings() {
 
   document.getElementById('content').innerHTML = `
     <div class="page-title"><span class="grad">Настройки</span></div>
-    <div class="page-sub">BritonLauncher v3.7.0</div>
+    <div class="page-sub">BritonLauncher v3.8.0</div>
 
     <div class="settings-section" style="margin-bottom:14px;">
       <h3>Тема оформления</h3>
@@ -1140,6 +1353,7 @@ window.addEventListener('pywebviewready', async () => {
     state.loader = cfg.modloader || state.loader;
   } catch (e) { applyTheme('redsea'); }
   showPage('launch');
+  refreshAccount();
 });
 </script>
 </body>
@@ -1153,7 +1367,7 @@ if __name__ == "__main__":
         pass
     api = Api()
     window = webview.create_window(
-        "BritonLauncher v3.7.0",
+        "BritonLauncher v3.8.0",
         html=HTML,
         js_api=api,
         width=1180,
