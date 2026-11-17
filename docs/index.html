@@ -9,7 +9,7 @@
   <meta property="og:description" content="Игра по нику, Fabric/Forge, моды с Modrinth, любая версия Minecraft." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/icon.svg" />
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
 
@@ -289,7 +289,7 @@
             <button class="btn btn-ghost" onclick="doLogout()">Выйти</button>
           </div>
 
-          <div class="launcher-code-box">
+          <div class="launcher-code-box" id="launcher-code-box">
             <h3 class="admin-title">Вход в лаунчер</h3>
             <p class="auth-note">Получи код и вставь его в лаунчер: «Войти по коду».</p>
             <button class="btn btn-primary" onclick="makeLauncherCode()">Получить код для лаунчера</button>
@@ -303,16 +303,34 @@
           </div>
 
           <div id="admin-panel" class="hidden">
-            <h3 class="admin-title">Админ-панель <span class="role-badge admin">ADMIN</span></h3>
+            <div class="admin-head">
+              <h3 class="admin-title">Админ-панель <span class="role-badge admin">ADMIN</span></h3>
+              <input class="admin-search" id="admin-search" placeholder="Поиск по нику…" oninput="renderAdmin()" />
+            </div>
+            <div class="admin-stats" id="admin-stats">
+              <span class="admin-chip">Аккаунтов <b id="admin-count">0</b></span>
+              <span class="admin-chip">Админов <b id="admin-admins">0</b></span>
+              <span class="admin-chip">Банов <b id="admin-bans">0</b></span>
+              <span class="admin-chip">Мутов <b id="admin-mutes">0</b></span>
+            </div>
             <div class="admin-table-wrap">
               <table class="admin-table">
                 <thead>
-                  <tr><th>Ник</th><th>Роль</th><th>Создан</th><th>Вход</th><th></th></tr>
+                  <tr><th>Ник</th><th>Роль</th><th>Статус</th><th>Создан</th><th>Вход</th><th></th></tr>
                 </thead>
                 <tbody id="admin-players"></tbody>
               </table>
             </div>
-            <p class="auth-note">Всего аккаунтов: <b id="admin-count">0</b></p>
+            <p class="auth-note">
+              <span class="status-badge active">АКТИВЕН</span> обычный доступ ·
+              <span class="status-badge muted">МУТ</span> не может писать и получает код с пометкой ·
+              <span class="status-badge banned">ЗАБАНЕН</span> не может войти и получить код.
+              Главный админ и админ сайта защищены от бана, мута и удаления.
+            </p>
+            <div class="admin-log">
+              <h4>Журнал действий</h4>
+              <ul id="admin-log-list"></ul>
+            </div>
           </div>
 
           <p class="auth-note" id="user-note">Ты вошёл как игрок.</p>
@@ -321,7 +339,7 @@
     </div>
   </section>
 
-  <script src="script.js?v=5"></script>
+  <script src="script.js?v=6"></script>
 </body>
 </html>
 

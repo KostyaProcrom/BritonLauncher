@@ -94,11 +94,6 @@ function findPlayerKey(players, nick) {
   return Object.keys(players).find((k) => k.toLowerCase() === low) || null;
 }
 
-function isAdminNick(nick) {
-  const low = String(nick || '').toLowerCase();
-  return ADMINS.some((a) => a.toLowerCase() === low);
-}
-
 function isMainAdmin(nick) {
   return String(nick || '').toLowerCase() === ADMINS[0].toLowerCase();
 }
@@ -116,12 +111,17 @@ async function makeLauncherCode() {
   if (!crypto?.subtle) return;
 
   const status = document.getElementById('launcher-code-status');
+  if (isBanned(me.player)) {
+    if (status) status.textContent = 'Аккаунт забанен: ' + (me.player.banReason || 'без причины');
+    return;
+  }
   if (status) status.textContent = 'Генерация...';
 
   const payload = {
     n: me.nick,
     r: me.role,
     m: isMainAdmin(me.nick) ? 1 : 0,
+    mu: isMuted(me.player) ? 1 : 0,
     t: Date.now(),
   };
   const payloadB64 = b64url(new TextEncoder().encode(JSON.stringify(payload)));
@@ -248,10 +248,13 @@ async function doRegister(event) {
     role: isAdminNick(nick) ? 'admin' : 'player',
     created: new Date().toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }),
     lastLogin: '—',
+    banned: false,
+    muted: false,
   };
   if (!pdSave(data)) return setMsg('Не удалось сохранить данные (localStorage)', 'error');
 
   localStorage.setItem(SESSION_KEY, nick);
+  adminLog('register', nick, '');
   document.getElementById('form-register').reset();
   setMsg('');
   refreshAccountUI();
@@ -272,6 +275,9 @@ async function doLogin(event) {
   const player = data.players[key];
   const hash = await hashPassword(pass, player.salt || '');
   if (hash !== player.hash) return setMsg('Неверный пароль', 'error');
+  if (isBanned(player)) {
+    return setMsg('Аккаунт забанен: ' + (player.banReason || 'без причины'), 'error');
+  }
 
   player.lastLogin = new Date().toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
   player.role = isAdminNick(key) ? 'admin' : player.role || 'player';
@@ -318,70 +324,237 @@ function refreshAccountUI() {
   document.getElementById('profile-avatar').textContent = me.nick.charAt(0).toUpperCase();
   document.getElementById('profile-nick').textContent = me.nick;
   document.getElementById('profile-role').innerHTML =
-    me.role === 'admin' ? '<span class="role-badge admin">ADMIN</span>' : '<span class="role-badge">PLAYER</span>';
+    (me.role === 'admin' ? '<span class="role-badge admin">ADMIN</span>' : '<span class="role-badge">PLAYER</span>') +
+    (isBanned(me.player) ? ' <span class="status-badge banned">ЗАБАНЕН</span>' : '') +
+    (isMuted(me.player) ? ' <span class="status-badge muted">МУТ</span>' : '');
+
+  document.getElementById('launcher-code-box').classList.toggle('hidden', isBanned(me.player));
 
   const adminPanel = document.getElementById('admin-panel');
   adminPanel.classList.toggle('hidden', me.role !== 'admin');
-  document.getElementById('user-note').textContent =
-    me.role === 'admin'
-      ? (isMainAdmin(me.nick)
-          ? 'Ты главный администратор: полный доступ к аккаунтам и ролям.'
-          : 'Ты администратор: можешь выдавать роли и удалять аккаунты.')
-      : 'Ты вошёл как игрок.';
+
+  let note = '';
+  if (isBanned(me.player)) {
+    note = 'Аккаунт забанен: ' + (me.player.banReason || 'без причины') + '. Вход в лаунчер и получение кода недоступны.';
+  } else if (me.role === 'admin') {
+    note = isMainAdmin(me.nick)
+      ? 'Ты главный администратор: полный доступ к аккаунтам, банам и мутам.'
+      : 'Ты администратор: можешь выдавать роли, банить, мутить и удалять аккаунты.';
+    if (isMuted(me.player)) note += ' На тебе мут.';
+  } else {
+    note = isMuted(me.player) ? 'Ты вошёл как игрок. Действует мут.' : 'Ты вошёл как игрок.';
+  }
+  document.getElementById('user-note').textContent = note;
 
   if (me.role === 'admin') renderAdmin();
+}
+
+/* ---------- статусы, журнал и админ-действия ---------- */
+function isBanned(player) {
+  return !!(player && player.banned);
+}
+
+function isMuted(player) {
+  return !!(player && player.muted);
+}
+
+function nowStr() {
+  return new Date().toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+const LOG_LABELS = {
+  register: 'зарегистрировался',
+  ban: 'забанил',
+  unban: 'разбанил',
+  mute: 'замутил',
+  unmute: 'размутил',
+  promote: 'выдал админа',
+  demote: 'снял админа',
+  delete: 'удалил',
+};
+
+function adminLog(action, nick, extra) {
+  const data = pdLoad();
+  if (!Array.isArray(data.log)) data.log = [];
+  const me = currentPlayer();
+  data.log.unshift({
+    at: nowStr(),
+    by: me ? me.nick : '—',
+    action,
+    nick: nick || '',
+    extra: extra || '',
+  });
+  data.log = data.log.slice(0, 60);
+  pdSave(data);
+}
+
+function renderAdminLog(data) {
+  const list = document.getElementById('admin-log-list');
+  if (!list) return;
+  const log = Array.isArray(data.log) ? data.log : [];
+  if (!log.length) {
+    list.innerHTML = '<li class="admin-log-empty">Пока пусто.</li>';
+    return;
+  }
+  list.innerHTML = log
+    .map((e) => {
+      const label = LOG_LABELS[e.action] || e.action;
+      const target = e.action === 'register' || !e.nick ? '' : ' <b>' + escapeHtml(e.nick) + '</b>';
+      const extra = e.extra ? ' <span class="log-extra">(' + escapeHtml(e.extra) + ')</span>' : '';
+      return `<li><span class="log-time">${escapeHtml(e.at)}</span> <b>${escapeHtml(e.by)}</b> ${label}${target}${extra}</li>`;
+    })
+    .join('');
 }
 
 function renderAdmin() {
   const data = pdLoad();
   const me = localStorage.getItem(SESSION_KEY) || '';
-  const keys = Object.keys(data.players).sort((a, b) => {
-    const rank = (nick) => (isMainAdmin(nick) ? 0 : roleOf(nick, data.players[nick]) === 'admin' ? 1 : 2);
-    const diff = rank(a) - rank(b);
-    return diff !== 0 ? diff : a.localeCompare(b);
-  });
+  const query = (document.getElementById('admin-search')?.value || '').trim().toLowerCase();
+  const all = Object.keys(data.players);
+  const keys = all
+    .filter((nick) => !query || nick.toLowerCase().includes(query))
+    .sort((a, b) => {
+      const rank = (nick) => (isMainAdmin(nick) ? 0 : roleOf(nick, data.players[nick]) === 'admin' ? 1 : 2);
+      const diff = rank(a) - rank(b);
+      return diff !== 0 ? diff : a.localeCompare(b);
+    });
 
   const tbody = document.getElementById('admin-players');
   if (!tbody) return;
 
-  tbody.innerHTML = keys
-    .map((nick) => {
-      const player = data.players[nick];
-      const role = roleOf(nick, player);
-      const isFixed = isAdminNick(nick);
-      const actions = isFixed
-        ? `<span class="auth-note">${isMainAdmin(nick) ? 'главный админ' : 'админ сайта'}</span>`
-        : `<button class="mini-btn" onclick="adminToggleRole('${escapeHtml(nick)}')">${
-            role === 'admin' ? 'Снять админа' : 'Сделать админом'
-          }</button>` +
-          `<button class="mini-btn danger" onclick="adminDelete('${escapeHtml(nick)}')">Удалить</button>`;
+  tbody.innerHTML = keys.length
+    ? keys
+        .map((nick) => {
+          const player = data.players[nick] || {};
+          const role = roleOf(nick, player);
+          const banned = isBanned(player);
+          const muted = isMuted(player);
+          const isFixed = isAdminNick(nick);
+          const isSelf = nick.toLowerCase() === me.toLowerCase();
 
-      return `<tr class="${nick === me ? 'is-me' : ''}">
-        <td>${escapeHtml(nick)}</td>
-        <td><span class="role-badge ${role === 'admin' ? 'admin' : ''}">${role.toUpperCase()}</span></td>
-        <td>${escapeHtml(player.created || '—')}</td>
-        <td>${escapeHtml(player.lastLogin || '—')}</td>
-        <td class="admin-actions">${actions}</td>
-      </tr>`;
-    })
-    .join('');
+          const status = banned
+            ? `<span class="status-badge banned" title="${escapeHtml(player.banReason || '')}">ЗАБАНЕН</span>`
+            : muted
+              ? `<span class="status-badge muted" title="${escapeHtml(player.muteReason || '')}">МУТ</span>`
+              : '<span class="status-badge active">АКТИВЕН</span>';
 
-  document.getElementById('admin-count').textContent = keys.length;
+          let actions;
+          if (isFixed) {
+            actions = `<span class="auth-note">${isMainAdmin(nick) ? 'главный админ' : 'админ сайта'}</span>`;
+          } else if (isSelf) {
+            actions = `<span class="auth-note">это ты</span>`;
+          } else {
+            actions =
+              `<button class="mini-btn ${banned ? '' : 'danger'}" onclick="adminToggleBan('${escapeHtml(nick)}')">${
+                banned ? 'Разбанить' : 'Забанить'
+              }</button>` +
+              `<button class="mini-btn" onclick="adminToggleMute('${escapeHtml(nick)}')">${
+                muted ? 'Размутить' : 'Замутить'
+              }</button>` +
+              `<button class="mini-btn" onclick="adminToggleRole('${escapeHtml(nick)}')">${
+                role === 'admin' ? 'Снять админа' : 'Сделать админом'
+              }</button>` +
+              `<button class="mini-btn danger" onclick="adminDelete('${escapeHtml(nick)}')">Удалить</button>`;
+          }
+
+          return `<tr class="${isSelf ? 'is-me' : ''}">
+            <td>${escapeHtml(nick)}</td>
+            <td><span class="role-badge ${role === 'admin' ? 'admin' : ''}">${role.toUpperCase()}</span></td>
+            <td>${status}</td>
+            <td>${escapeHtml(player.created || '—')}</td>
+            <td>${escapeHtml(player.lastLogin || '—')}</td>
+            <td class="admin-actions">${actions}</td>
+          </tr>`;
+        })
+        .join('')
+    : '<tr><td colspan="6" class="admin-empty">Ничего не найдено.</td></tr>';
+
+  document.getElementById('admin-count').textContent = all.length;
+  document.getElementById('admin-admins').textContent = all.filter((n) => roleOf(n, data.players[n]) === 'admin').length;
+  document.getElementById('admin-bans').textContent = all.filter((n) => isBanned(data.players[n])).length;
+  document.getElementById('admin-mutes').textContent = all.filter((n) => isMuted(data.players[n])).length;
+
+  renderAdminLog(data);
+}
+
+function adminCanAct() {
+  const me = currentPlayer();
+  return me && me.role === 'admin' ? me : null;
+}
+
+function adminToggleBan(nick) {
+  const me = adminCanAct();
+  if (!me) return;
+  const data = pdLoad();
+  const key = findPlayerKey(data.players, nick);
+  if (!key || isAdminNick(key) || key.toLowerCase() === me.nick.toLowerCase()) return;
+  const player = data.players[key];
+
+  if (isBanned(player)) {
+    player.banned = false;
+    delete player.banReason;
+    delete player.bannedAt;
+    delete player.bannedBy;
+    pdSave(data);
+    adminLog('unban', key, '');
+  } else {
+    const reason = prompt(`Причина бана для «${key}» (необязательно):`, '');
+    if (reason === null) return;
+    player.banned = true;
+    player.banReason = reason.trim() || 'без причины';
+    player.bannedAt = nowStr();
+    player.bannedBy = me.nick;
+    pdSave(data);
+    adminLog('ban', key, player.banReason);
+    if (localStorage.getItem(SESSION_KEY) === key) localStorage.removeItem(SESSION_KEY);
+  }
+  refreshAccountUI();
+}
+
+function adminToggleMute(nick) {
+  const me = adminCanAct();
+  if (!me) return;
+  const data = pdLoad();
+  const key = findPlayerKey(data.players, nick);
+  if (!key || isAdminNick(key) || key.toLowerCase() === me.nick.toLowerCase()) return;
+  const player = data.players[key];
+
+  if (isMuted(player)) {
+    player.muted = false;
+    delete player.muteReason;
+    delete player.mutedAt;
+    delete player.mutedBy;
+    pdSave(data);
+    adminLog('unmute', key, '');
+  } else {
+    const reason = prompt(`Причина мута для «${key}» (необязательно):`, '');
+    if (reason === null) return;
+    player.muted = true;
+    player.muteReason = reason.trim() || 'без причины';
+    player.mutedAt = nowStr();
+    player.mutedBy = me.nick;
+    pdSave(data);
+    adminLog('mute', key, player.muteReason);
+  }
+  refreshAccountUI();
 }
 
 function adminToggleRole(nick) {
-  if (!currentPlayer() || currentPlayer().role !== 'admin') return;
+  const me = adminCanAct();
+  if (!me) return;
   const data = pdLoad();
   const key = findPlayerKey(data.players, nick);
   if (!key || isAdminNick(key)) return;
-  data.players[key].role = roleOf(key, data.players[key]) === 'admin' ? 'player' : 'admin';
+  const makeAdmin = roleOf(key, data.players[key]) !== 'admin';
+  data.players[key].role = makeAdmin ? 'admin' : 'player';
   pdSave(data);
-  renderAdmin();
+  adminLog(makeAdmin ? 'promote' : 'demote', key, '');
+  refreshAccountUI();
 }
 
 function adminDelete(nick) {
-  const me = currentPlayer();
-  if (!me || me.role !== 'admin') return;
+  const me = adminCanAct();
+  if (!me) return;
   if (isAdminNick(nick)) return;
   if (!confirm(`Удалить аккаунт «${nick}»?`)) return;
 
@@ -390,6 +563,7 @@ function adminDelete(nick) {
   if (!key) return;
   delete data.players[key];
   pdSave(data);
+  adminLog('delete', key, '');
   if (localStorage.getItem(SESSION_KEY) === key) localStorage.removeItem(SESSION_KEY);
   refreshAccountUI();
 }

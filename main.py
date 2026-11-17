@@ -190,6 +190,7 @@ def verify_launcher_code(code):
         "nick": nick,
         "role": role,
         "main": fixed == "main",
+        "muted": bool(payload.get("mu")),
         "login_at": time.strftime("%d.%m.%Y %H:%M"),
     }
 
@@ -382,6 +383,7 @@ class Api:
             "nick": acc.get("nick", ""),
             "role": acc.get("role", "player"),
             "main": bool(acc.get("main")),
+            "muted": bool(acc.get("muted")),
             "login_at": acc.get("login_at", ""),
             "site_url": SITE_URL,
         }
@@ -801,6 +803,7 @@ html, body { height: 100%; background: var(--body-bg); color: var(--text); font-
 .title-account .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-mute); flex-shrink: 0; }
 .title-account.admin .dot { background: var(--accent); }
 .title-account .role { font-size: 9px; letter-spacing: 0.5px; color: var(--accent); font-weight: 800; }
+.title-account .role.muted { color: #facc15; }
 .win-btns { margin-left: 0; display: flex; gap: 4px; }
 .win-btn { width: 44px; height: 36px; background: transparent; border: none; color: var(--text-dim); font-size: 14px; font-weight: 700; border-radius: 10px; cursor: pointer; transition: all 0.15s; display: grid; place-items: center; }
 .win-btn:hover { background: rgba(128,128,128,0.15); color: var(--text); }
@@ -842,6 +845,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .account-name { font-weight: 700; color: var(--green); }
 .account-box .spacer { flex: 1; }
 .account-role { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; background: rgba(197, 160, 89, 0.18); color: var(--accent); }
+.account-mute { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; background: rgba(234, 179, 8, 0.18); color: #facc15; }
 .site-login-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .site-login-row input { flex: 1; min-width: 180px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--glass-border); background: var(--bg-soft); color: var(--text); font: inherit; font-size: 12px; outline: none; }
 .site-login-row input:focus { border-color: var(--accent); }
@@ -1009,7 +1013,8 @@ function updateTitleAccount(acc) {
   if (acc && acc.logged_in) {
     el.classList.toggle('admin', acc.role === 'admin');
     el.innerHTML = '<span class="dot"></span><span class="ta-nick">' + escapeHtml(acc.nick) + '</span>'
-      + (acc.role === 'admin' ? '<span class="role">' + (acc.main ? 'ГЛАВНЫЙ АДМИН' : 'АДМИН') + '</span>' : '');
+      + (acc.role === 'admin' ? '<span class="role">' + (acc.main ? 'ГЛАВНЫЙ АДМИН' : 'АДМИН') + '</span>' : '')
+      + (acc.muted ? '<span class="role muted">МУТ</span>' : '');
     el.title = acc.role === 'admin' ? 'Открыть админ-панель' : 'Аккаунт сайта';
   } else {
     el.classList.remove('admin');
@@ -1043,7 +1048,8 @@ async function refreshAccount() {
   if (acc.logged_in) {
     box.innerHTML = '<div class="account-head">' + escapeHtml(acc.nick.charAt(0).toUpperCase()) + '</div>'
       + '<div>Вход через сайт: <span class="account-name">' + escapeHtml(acc.nick) + '</span>'
-      + '<span class="account-role">' + roleLabel(acc) + '</span></div>'
+      + '<span class="account-role">' + roleLabel(acc) + '</span>'
+      + (acc.muted ? '<span class="account-mute">МУТ</span>' : '') + '</div>'
       + '<div class="spacer"></div>'
       + (acc.role === 'admin' ? '<button class="btn" onclick="goAdmin()">Админ-панель</button>' : '')
       + '<button class="btn" onclick="siteLogout()">Выйти</button>';
@@ -1068,7 +1074,7 @@ async function siteLogin() {
   if (!code) { showToast('Вставь код с сайта'); return; }
   const res = await window.pywebview.api.site_login(code);
   if (res.ok) {
-    showToast('Вход выполнен: ' + res.nick);
+    showToast(res.muted ? 'Вход выполнен: ' + res.nick + ' (действует мут)' : 'Вход выполнен: ' + res.nick);
     refreshAccount();
     if (document.body.dataset.activePage === 'admin') renderAdminPage();
   } else {
@@ -1101,6 +1107,7 @@ async function renderAdminPage() {
     <div class="admin-card">
       <div class="admin-row"><span>Ник</span><b>${escapeHtml(acc.nick)}</b></div>
       <div class="admin-row"><span>Роль</span><b>${acc.main ? 'Главный администратор' : 'Администратор'}</b></div>
+      <div class="admin-row"><span>Статус</span><b>${acc.muted ? 'Мут' : 'Активен'}</b></div>
       <div class="admin-row"><span>Вход</span><b>${escapeHtml(acc.login_at || '—')}</b></div>
     </div>
     <div class="admin-actions">
