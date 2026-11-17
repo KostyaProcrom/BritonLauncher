@@ -61,7 +61,12 @@ if (yearEl) yearEl.textContent = new Date().getFullYear();
 // =========================================================
 const PD_KEY = 'britonlauncher.playerdata';
 const SESSION_KEY = 'britonlauncher.session';
-const ADMIN_NAME = 'BritonLauncher';
+const ADMINS = ['BritonLauncher', 'KostyaKosmos'];
+
+function isAdminNick(nick) {
+  const low = String(nick || '').toLowerCase();
+  return ADMINS.some((a) => a.toLowerCase() === low);
+}
 
 function pdLoad() {
   try {
@@ -87,7 +92,12 @@ function findPlayerKey(players, nick) {
 }
 
 function isAdminNick(nick) {
-  return String(nick || '').toLowerCase() === ADMIN_NAME.toLowerCase();
+  const low = String(nick || '').toLowerCase();
+  return ADMINS.some((a) => a.toLowerCase() === low);
+}
+
+function isMainAdmin(nick) {
+  return String(nick || '').toLowerCase() === ADMINS[0].toLowerCase();
 }
 
 function roleOf(nick, player) {
@@ -125,24 +135,18 @@ function currentPlayer() {
   return { nick: key, role: roleOf(key, data.players[key]), player: data.players[key] };
 }
 
-/* ---------- модальное окно ---------- */
+/* ---------- раздел аккаунта ---------- */
 function openAccount() {
-  const modal = document.getElementById('account-modal');
-  if (!modal) return;
-  modal.classList.add('open');
-  modal.setAttribute('aria-hidden', 'false');
-  document.body.style.overflow = 'hidden';
+  const section = document.getElementById('account');
+  if (!section) return;
   nav?.classList.remove('open');
   burger?.setAttribute('aria-expanded', 'false');
   refreshAccountUI();
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function closeAccount() {
-  const modal = document.getElementById('account-modal');
-  if (!modal) return;
-  modal.classList.remove('open');
-  modal.setAttribute('aria-hidden', 'true');
-  document.body.style.overflow = '';
+  nav?.classList.remove('open');
 }
 
 function switchTab(tab) {
@@ -280,9 +284,9 @@ function renderAdmin() {
     .map((nick) => {
       const player = data.players[nick];
       const role = roleOf(nick, player);
-      const isMain = isAdminNick(nick);
-      const actions = isMain
-        ? '<span class="auth-note">главный админ</span>'
+      const isFixed = isAdminNick(nick);
+      const actions = isFixed
+        ? `<span class="auth-note">${isMainAdmin(nick) ? 'главный админ' : 'админ сайта'}</span>`
         : `<button class="mini-btn" onclick="adminToggleRole('${escapeHtml(nick)}')">${
             role === 'admin' ? 'Снять админа' : 'Сделать админом'
           }</button>` +
