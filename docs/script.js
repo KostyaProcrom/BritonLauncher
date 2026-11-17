@@ -61,7 +61,7 @@ if (yearEl) yearEl.textContent = new Date().getFullYear();
 // =========================================================
 const PD_KEY = 'britonlauncher.playerdata';
 const SESSION_KEY = 'britonlauncher.session';
-const ADMINS = ['BritonLauncher', 'KostyaKosmos'];
+const ADMINS = ['KostyaKosmos', 'BritonLauncher'];
 
 function isAdminNick(nick) {
   const low = String(nick || '').toLowerCase();
@@ -136,6 +136,11 @@ function currentPlayer() {
 }
 
 /* ---------- раздел аккаунта ---------- */
+function openLogin() {
+  switchTab('login');
+  openAccount();
+}
+
 function openAccount() {
   const section = document.getElementById('account');
   if (!section) return;
@@ -243,7 +248,7 @@ function refreshAccountUI() {
     guest.classList.remove('hidden');
     user.classList.add('hidden');
     if (navBtn) {
-      navBtn.textContent = 'Аккаунт';
+      navBtn.textContent = 'Вход';
       navBtn.classList.remove('is-user');
     }
     return;
@@ -264,7 +269,11 @@ function refreshAccountUI() {
   const adminPanel = document.getElementById('admin-panel');
   adminPanel.classList.toggle('hidden', me.role !== 'admin');
   document.getElementById('user-note').textContent =
-    me.role === 'admin' ? 'Ты администратор: можешь выдавать роли и удалять аккаунты.' : 'Ты вошёл как игрок.';
+    me.role === 'admin'
+      ? (isMainAdmin(me.nick)
+          ? 'Ты главный администратор: полный доступ к аккаунтам и ролям.'
+          : 'Ты администратор: можешь выдавать роли и удалять аккаунты.')
+      : 'Ты вошёл как игрок.';
 
   if (me.role === 'admin') renderAdmin();
 }
@@ -273,7 +282,8 @@ function renderAdmin() {
   const data = pdLoad();
   const me = localStorage.getItem(SESSION_KEY) || '';
   const keys = Object.keys(data.players).sort((a, b) => {
-    const diff = (roleOf(a, data.players[a]) !== 'admin') - (roleOf(b, data.players[b]) !== 'admin');
+    const rank = (nick) => (isMainAdmin(nick) ? 0 : roleOf(nick, data.players[nick]) === 'admin' ? 1 : 2);
+    const diff = rank(a) - rank(b);
     return diff !== 0 ? diff : a.localeCompare(b);
   });
 
