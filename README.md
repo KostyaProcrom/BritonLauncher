@@ -62,6 +62,8 @@ pyinstaller --noconfirm --onefile --windowed ^
 `BRITON`, подпись `LAUNCHER EDITION` и свои сплэши. Он работает как обычный ресурспак
 и не требует модов.
 
+![Меню Minecraft с BritonMenu](assets/menu-preview.png)
+
 - В лаунчере: **Настройки → Меню Minecraft (ресурспак)** → «Установить / обновить».
 - Пак копируется в `%LOCALAPPDATA%\.britonlauncher\resourcepacks\BritonMenu.zip`.
 - Лаунчер включает его в `options.txt` (`resourcePacks`) и убирает из
