@@ -12,7 +12,7 @@
 - 🧩 **Fabric и Forge** — установка модлоадеров одной кнопкой под выбранную версию.
 - 📦 **Modrinth внутри** — поиск и установка модов, ресурспаков и шейдеров.
 - 🎚️ **Любая релизная версия** Minecraft и настройка оперативной памяти (`4G`, `2048M`).
-- 🎨 **6 тем оформления** и поддержка своего HTML-экрана (`custom_menu/index.html`).
+- 🎨 **6 тем оформления** и брендовое меню Minecraft (ресурспак с фоном, логотипом и сплэшами).
 - 🖥️ **Отдельное окно консоли** с логами игры.
 - 🔄 **Проверка обновлений** лаунчера через GitHub Releases.
 
@@ -52,7 +52,28 @@ pyinstaller --noconfirm --onefile --windowed ^
   --name BritonLauncher ^
   --collect-all webview ^
   --collect-all minecraft_launcher_lib ^
+  --add-data "assets\BritonMenu.zip;assets" ^
   main.py
+```
+
+## Меню Minecraft (ресурспак)
+
+В лаунчер встроен ресурспак `assets/BritonMenu.zip`: тёмно-красная панорама, логотип
+`BRITON`, подпись `LAUNCHER EDITION` и свои сплэши. Он работает как обычный ресурспак
+и не требует модов.
+
+- В лаунчере: **Настройки → Меню Minecraft (ресурспак)** → «Установить / обновить».
+- Пак копируется в `%LOCALAPPDATA%\.britonlauncher\resourcepacks\BritonMenu.zip`.
+- Лаунчер включает его в `options.txt` (`resourcePacks`) и убирает из
+  `incompatibleResourcePacks`, поэтому Minecraft не считает его несовместимым.
+- Подходит для 1.20.1 и новых версий (в `pack.mcmeta` указан диапазон форматов).
+- Если игра уже запущена, перезапусти её, чтобы увидеть новое меню.
+
+Пересобрать пак из исходников:
+
+```powershell
+pip install pillow numpy
+python tools/build_menu_pack.py
 ```
 
 ## Вход через сайт
@@ -94,10 +115,10 @@ pyinstaller --noconfirm --onefile --windowed ^
 %LOCALAPPDATA%\.britonlauncher\
 ├── config.json        настройки + аккаунт сайта
 ├── nickname.txt       сохранённый ник
-├── account.json       старые токены Microsoft (если остались)
+├── options.txt        настройки Minecraft (включая ресурспак меню)
 ├── servers.dat        список серверов
 ├── mods\
-├── resourcepacks\
+├── resourcepacks\     BritonMenu.zip — меню от лаунчера
 ├── shaderpacks\
 └── custom_menu\index.html
 ```
@@ -109,7 +130,8 @@ pyinstaller --noconfirm --onefile --windowed ^
 
 ```
 main.py               лаунчер (GUI + логика + вход по коду с сайта)
-microsoft_login.py    старый отдельный скрипт токена (не используется интерфейсом)
+assets/BritonMenu.zip брендовый ресурспак для меню Minecraft
+tools/build_menu_pack.py  генератор ресурспака
 requirements.txt      зависимости Python
 build_exe.bat         сборка .exe
 run.bat               быстрый запуск из исходников

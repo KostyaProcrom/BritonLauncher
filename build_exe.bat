@@ -39,6 +39,7 @@ echo Building BritonLauncher.exe ...
   --collect-all clr_loader ^
   --hidden-import clr ^
   --hidden-import webview.platforms.edgechromium ^
+  --add-data "assets\BritonMenu.zip;assets" ^
   main.py
 if errorlevel 1 (
     echo Build failed. See output above.

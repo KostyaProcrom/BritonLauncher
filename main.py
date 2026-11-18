@@ -3,6 +3,8 @@ import minecraft_launcher_lib
 import subprocess
 import threading
 import os
+import sys
+import shutil
 import json
 import re
 import base64
@@ -16,7 +18,7 @@ import webbrowser
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
 
-CURRENT_VERSION = "3.8.0"
+CURRENT_VERSION = "3.8.1"
 GITHUB_REPO = "KostyaProcrom/BritonLauncher"
 UPDATE_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -54,6 +56,88 @@ if not os.path.exists(CUSTOM_MENU_PATH):
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 NICK_PATH = os.path.join(BASE_DIR, "nickname.txt")
 ACCOUNT_PATH = os.path.join(BASE_DIR, "account.json")
+OPTIONS_PATH = os.path.join(BASE_DIR, "options.txt")
+
+MENU_PACK_NAME = "BritonMenu.zip"
+MENU_PACK_PATH = os.path.join(BASE_DIR, "resourcepacks", MENU_PACK_NAME)
+
+
+def bundled_asset(*parts):
+    """Путь к файлу, вложенному в .exe (PyInstaller) или лежащему рядом с main.py."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, *parts)
+
+
+def _read_options_lines():
+    try:
+        with open(OPTIONS_PATH, "r", encoding="utf-8", errors="replace") as f:
+            return f.read().splitlines()
+    except Exception:
+        return []
+
+
+def _write_options_lines(lines):
+    os.makedirs(os.path.dirname(OPTIONS_PATH), exist_ok=True)
+    with open(OPTIONS_PATH, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def _menu_pack_entry():
+    return "file/" + MENU_PACK_NAME
+
+
+def _menu_pack_enabled():
+    entry = _menu_pack_entry()
+    for line in _read_options_lines():
+        if line.startswith("resourcePacks:"):
+            raw = line.split(":", 1)[1].strip()
+            try:
+                packs = json.loads(raw) if raw else []
+            except Exception:
+                packs = []
+            return isinstance(packs, list) and entry in packs
+    return False
+
+
+def _set_menu_pack_enabled(enabled):
+    entry = _menu_pack_entry()
+    lines = _read_options_lines()
+    found = False
+    for i, line in enumerate(lines):
+        if line.startswith("resourcePacks:"):
+            found = True
+            raw = line.split(":", 1)[1].strip()
+            try:
+                packs = json.loads(raw) if raw else []
+            except Exception:
+                packs = []
+            if not isinstance(packs, list):
+                packs = []
+            packs = [p for p in packs if p != entry]
+            if enabled:
+                packs.append(entry)
+            if not packs:
+                packs = ["vanilla"]
+            lines[i] = "resourcePacks:" + json.dumps(packs, ensure_ascii=False)
+            break
+    if not found:
+        packs = ["vanilla"] + ([entry] if enabled else [])
+        lines.append("resourcePacks:" + json.dumps(packs, ensure_ascii=False))
+
+    # Если пак попал в несовместимые — убираем, чтобы Minecraft его не отключал.
+    for i, line in enumerate(lines):
+        if line.startswith("incompatibleResourcePacks:"):
+            raw = line.split(":", 1)[1].strip()
+            try:
+                packs = json.loads(raw) if raw else []
+            except Exception:
+                packs = []
+            if isinstance(packs, list) and entry in packs:
+                packs = [p for p in packs if p != entry]
+                lines[i] = "incompatibleResourcePacks:" + json.dumps(packs, ensure_ascii=False)
+            break
+
+    _write_options_lines(lines)
 
 _cfg_lock = threading.RLock()
 _ms_lock = threading.Lock()
@@ -333,6 +417,53 @@ class Api:
                 return {"ok": False, "error": str(e)}
         return {"ok": False, "error": "Кастомное меню отключено или не найдено"}
 
+    # ---------- ресурспак с меню Minecraft ----------
+    def get_menu_pack_status(self):
+        return {
+            "ok": True,
+            "installed": os.path.exists(MENU_PACK_PATH),
+            "enabled": _menu_pack_enabled(),
+            "path": MENU_PACK_PATH,
+            "name": MENU_PACK_NAME,
+        }
+
+    def install_menu_pack(self):
+        src = bundled_asset("assets", MENU_PACK_NAME)
+        if not os.path.exists(src):
+            return {"ok": False, "error": "Ресурспак не найден в сборке лаунчера"}
+        try:
+            os.makedirs(os.path.dirname(MENU_PACK_PATH), exist_ok=True)
+            shutil.copyfile(src, MENU_PACK_PATH)
+            _set_menu_pack_enabled(True)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        self._set_status("Ресурспак меню установлен", "#22c55e", "✅")
+        return self.get_menu_pack_status()
+
+    def set_menu_pack_enabled(self, enabled):
+        enabled = bool(enabled)
+        if enabled and not os.path.exists(MENU_PACK_PATH):
+            return self.install_menu_pack()
+        try:
+            _set_menu_pack_enabled(enabled)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        self._set_status(
+            "Меню Minecraft включено" if enabled else "Меню Minecraft выключено",
+            "#22c55e",
+            "✅",
+        )
+        return self.get_menu_pack_status()
+
+    def open_resourcepacks_folder(self):
+        try:
+            path = os.path.dirname(MENU_PACK_PATH)
+            os.makedirs(path, exist_ok=True)
+            os.startfile(path)
+            return {"ok": True, "path": path}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def save_nickname(self, nick):
         nick = (nick or "").strip()
         if not nick:
@@ -350,13 +481,10 @@ class Api:
             config.update({
                 "theme": data.get("theme", config.get("theme", "redsea")),
                 "ram": sanitize_ram(data.get("ram", config.get("ram", "4G"))),
-                "show_console": bool(data.get("show_console", False)),
+                "show_console": bool(data.get("show_console", config.get("show_console", False))),
                 "version": data.get("version", config.get("version", "1.20.1")),
                 "modloader": data.get("modloader", config.get("modloader", "Vanilla")),
-                "use_custom_menu": bool(data.get("use_custom_menu", False)),
-                "client_id": (data.get("client_id", config.get("client_id", "")) or "").strip(),
-                "redirect_uri": (data.get("redirect_uri", config.get("redirect_uri", DEFAULT_REDIRECT))
-                                 or DEFAULT_REDIRECT).strip(),
+                "use_custom_menu": bool(data.get("use_custom_menu", config.get("use_custom_menu", False))),
             })
             save_config(config)
         self._set_status("Настройки сохранены", "#22c55e", "✅")
@@ -888,6 +1016,8 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .switch.on { background: linear-gradient(135deg, var(--grad-1), var(--grad-2)); }
 .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: left 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
 .switch.on::after { left: 25px; }
+.menu-pack-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; }
+.menu-pack-actions .btn { flex: 1 1 160px; }
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
 .theme-card { position: relative; padding: 10px; background: var(--bg); border: 2px solid transparent; border-radius: 14px; cursor: pointer; transition: all 0.18s; text-align: center; }
 .theme-card:hover { transform: translateY(-2px); border-color: var(--accent); }
@@ -942,7 +1072,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       Настройки
     </button>
-    <div class="nav-ver" title="Версия лаунчера">v3.8.0</div>
+    <div class="nav-ver" title="Версия лаунчера">v3.8.1</div>
   </div>
   <div class="content" id="content">
     <iframe id="custom-menu-iframe"></iframe>
@@ -1291,7 +1421,7 @@ async function renderSettings() {
 
   document.getElementById('content').innerHTML = `
     <div class="page-title"><span class="grad">Настройки</span></div>
-    <div class="page-sub">BritonLauncher v3.8.0</div>
+    <div class="page-sub">BritonLauncher v3.8.1</div>
 
     <div class="settings-section" style="margin-bottom:14px;">
       <h3>Тема оформления</h3>
@@ -1310,21 +1440,89 @@ async function renderSettings() {
     </div>
 
     <div class="settings-section" style="margin-top:14px;">
-      <h3>Microsoft авторизация (Azure App)</h3>
-      <input id="client_id" placeholder="Client ID" value="${escapeHtml(cfg.client_id || '')}" />
-      <input id="redirect_uri" placeholder="Redirect URI" value="${escapeHtml(cfg.redirect_uri || '')}" />
-      <div class="page-status">Нужен Azure App с доступом к Minecraft API. Redirect URI должен совпадать с настройкой приложения.</div>
-    </div>
-
-    <div class="settings-section" style="margin-top:14px;">
-      <h3>Кастомное меню</h3>
+      <h3>Меню Minecraft (ресурспак)</h3>
       <div class="switch-row">
-        <span>Использовать custom_menu/index.html</span>
-        <div id="custom-menu-switch" class="switch ${cfg.use_custom_menu ? 'on' : ''}" onclick="this.classList.toggle('on')"></div>
+        <span>Брендовый фон, логотип и сплэши</span>
+        <div id="menu-pack-switch" class="switch" onclick="toggleMenuPack(this)"></div>
       </div>
+      <div class="page-status" id="menu-pack-status">Проверяю...</div>
+      <div class="menu-pack-actions">
+        <button class="btn" onclick="installMenuPack()">Установить / обновить</button>
+        <button class="btn" onclick="openResourcepacksFolder()">Открыть папку</button>
+      </div>
+      <div class="page-status">Работает на 1.20.1 и новее. Лаунчер сам включит пак в options.txt; если игра уже запущена — перезапусти её.</div>
     </div>
 
     <button class="btn primary full" onclick="saveSettings()">Сохранить настройки</button>`;
+  refreshMenuPackStatus();
+}
+
+function applyMenuPackStatus(st) {
+  const sw = document.getElementById('menu-pack-switch');
+  const status = document.getElementById('menu-pack-status');
+  if (!sw || !status || !st) return;
+  sw.classList.toggle('on', !!st.enabled);
+  if (st.enabled) {
+    status.textContent = 'Включено — меню Minecraft уже брендовое';
+    status.style.color = 'var(--green)';
+  } else if (st.installed) {
+    status.textContent = 'Пак установлен, но выключен';
+    status.style.color = 'var(--text-dim)';
+  } else {
+    status.textContent = 'Не установлено — нажми «Установить / обновить»';
+    status.style.color = 'var(--text-dim)';
+  }
+}
+
+async function refreshMenuPackStatus() {
+  const status = document.getElementById('menu-pack-status');
+  if (!status) return;
+  try {
+    const st = await window.pywebview.api.get_menu_pack_status();
+    if (!st || st.ok === false) throw new Error((st && st.error) || 'нет ответа');
+    applyMenuPackStatus(st);
+  } catch (e) {
+    status.textContent = 'Не удалось проверить пак: ' + (e && e.message ? e.message : e);
+    status.style.color = 'var(--red)';
+  }
+}
+
+async function toggleMenuPack(el) {
+  const want = !el.classList.contains('on');
+  el.classList.toggle('on', want);
+  const status = document.getElementById('menu-pack-status');
+  if (status) { status.textContent = want ? 'Включаю...' : 'Выключаю...'; status.style.color = 'var(--orange)'; }
+  try {
+    const st = await window.pywebview.api.set_menu_pack_enabled(want);
+    if (!st || st.ok === false) throw new Error((st && st.error) || 'нет ответа');
+    applyMenuPackStatus(st);
+    showToast(st.enabled ? 'Меню Minecraft включено' : 'Меню Minecraft выключено');
+  } catch (e) {
+    applyMenuPackStatus({ installed: true, enabled: !want });
+    if (status) { status.textContent = 'Ошибка: ' + (e && e.message ? e.message : e); status.style.color = 'var(--red)'; }
+  }
+}
+
+async function installMenuPack() {
+  const status = document.getElementById('menu-pack-status');
+  if (status) { status.textContent = 'Устанавливаю ресурспак...'; status.style.color = 'var(--orange)'; }
+  try {
+    const st = await window.pywebview.api.install_menu_pack();
+    if (!st || st.ok === false) throw new Error((st && st.error) || 'нет ответа');
+    applyMenuPackStatus(st);
+    showToast('Ресурспак установлен');
+  } catch (e) {
+    if (status) { status.textContent = 'Ошибка: ' + (e && e.message ? e.message : e); status.style.color = 'var(--red)'; }
+  }
+}
+
+async function openResourcepacksFolder() {
+  try {
+    const res = await window.pywebview.api.open_resourcepacks_folder();
+    if (res && res.ok === false) showToast('Ошибка: ' + res.error);
+  } catch (e) {
+    showToast('Ошибка: ' + (e && e.message ? e.message : e));
+  }
 }
 
 async function pickTheme(id) {
@@ -1335,19 +1533,13 @@ async function pickTheme(id) {
 async function saveSettings() {
   const ram = (document.getElementById('ram')?.value || '4G').trim() || '4G';
   const show_console = document.getElementById('console-switch').classList.contains('on');
-  const use_custom_menu = document.getElementById('custom-menu-switch').classList.contains('on');
-  const client_id = (document.getElementById('client_id')?.value || '').trim();
-  const redirect_uri = (document.getElementById('redirect_uri')?.value || '').trim();
   const cfg = await window.pywebview.api.get_config();
   await window.pywebview.api.save_settings({
     theme: cfg.theme || 'redsea',
     ram,
     show_console,
     version: state.version,
-    modloader: state.loader,
-    use_custom_menu,
-    client_id,
-    redirect_uri
+    modloader: state.loader
   });
   showToast('Настройки сохранены');
 }
@@ -1374,7 +1566,7 @@ if __name__ == "__main__":
         pass
     api = Api()
     window = webview.create_window(
-        "BritonLauncher v3.8.0",
+        "BritonLauncher v3.8.1",
         html=HTML,
         js_api=api,
         width=1180,
