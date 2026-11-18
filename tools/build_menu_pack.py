@@ -314,6 +314,8 @@ def build() -> str:
         "pack": {
             "pack_format": 15,
             "supported_formats": [15, 99],
+            "min_format": [15, 0],
+            "max_format": 99,
             "description": "§cBritonLauncher§r — кастомное меню",
         }
     }
