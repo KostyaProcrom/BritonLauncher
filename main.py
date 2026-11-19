@@ -18,7 +18,7 @@ import webbrowser
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
 
-CURRENT_VERSION = "3.8.1"
+CURRENT_VERSION = "3.9.0"
 GITHUB_REPO = "KostyaProcrom/BritonLauncher"
 UPDATE_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -156,9 +156,9 @@ def load_config():
                     return data
         except Exception:
             pass
-    return {"theme": "redsea", "ram": "4G", "nickname": "", "version": "1.20.1",
+    return {"theme": "lunar", "ram": "4G", "nickname": "", "version": "1.20.1",
             "modloader": "Vanilla", "show_console": False, "use_custom_menu": False,
-            "client_id": "", "redirect_uri": DEFAULT_REDIRECT, "site_account": {}}
+            "client_id": "", "redirect_uri": DEFAULT_REDIRECT, "site_account": {}, "ui": 2}
 
 
 def save_config(cfg):
@@ -280,7 +280,13 @@ def verify_launcher_code(code):
 
 
 config = load_config()
-config.setdefault("theme", "redsea")
+if "ui" not in config:
+    # одноразовый переход на новый интерфейс Launchpad
+    config["theme"] = "lunar"
+    config["ui"] = 2
+    save_config(config)
+config.setdefault("theme", "lunar")
+config.setdefault("ui", 2)
 config.setdefault("use_custom_menu", False)
 config.setdefault("client_id", "")
 config.setdefault("redirect_uri", DEFAULT_REDIRECT)
@@ -479,7 +485,7 @@ class Api:
         data = data or {}
         with _cfg_lock:
             config.update({
-                "theme": data.get("theme", config.get("theme", "redsea")),
+                "theme": data.get("theme", config.get("theme", "lunar")),
                 "ram": sanitize_ram(data.get("ram", config.get("ram", "4G"))),
                 "show_console": bool(data.get("show_console", config.get("show_console", False))),
                 "version": data.get("version", config.get("version", "1.20.1")),
@@ -491,7 +497,7 @@ class Api:
         return {"ok": True}
 
     def set_theme(self, theme):
-        allowed = {"purple", "ocean", "forest", "light", "redsea", "black"}
+        allowed = {"purple", "ocean", "forest", "light", "redsea", "black", "lunar"}
         if theme not in allowed:
             return {"ok": False, "error": "Неизвестная тема"}
         with _cfg_lock:
@@ -907,7 +913,7 @@ class Api:
 
 
 HTML = """<!DOCTYPE html>
-<html lang="ru" data-theme="redsea">
+<html lang="ru" data-theme="lunar">
 <head>
 <meta charset="UTF-8">
 <title>BritonLauncher</title>
@@ -1027,55 +1033,251 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .theme-check { position: absolute; top: 6px; right: 8px; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: white; font-size: 12px; display: none; place-items: center; font-weight: 900; }
 .theme-card.active .theme-check { display: grid; }
 #custom-menu-iframe { width: 100%; height: 100%; border: none; background: transparent; display: none; }
+
+/* ================= Launchpad redesign ================= */
+:root[data-theme="lunar"] { --bg:#0a0c11; --bg-soft:#10141b; --glass:#0d1016; --glass-border:#1e242f; --text:#eef2f8; --text-dim:#8b93a3; --text-mute:#5a6272; --grad-1:#22c55e; --grad-2:#16a34a; --accent:#22c55e; --accent-soft:rgba(34,197,94,0.14); --green:#22c55e; --orange:#f59e0b; --red:#ef4444; --body-bg: radial-gradient(circle at 18% -10%, rgba(34,197,94,0.10), transparent 45%), radial-gradient(circle at 100% 0%, rgba(59,130,246,0.07), transparent 42%), #0a0c11; }
+:root { --panel:#10141b; --panel-2:#141922; --line:#1e242f; }
+
+#app { display: flex; height: 100vh; overflow: hidden; }
+.rail { width: 64px; flex: 0 0 64px; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 0 10px; background: #0b0e13; border-right: 1px solid var(--line); }
+.rail-logo { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, #22c55e, #0f7a3a); display: grid; place-items: center; font-weight: 900; font-size: 16px; color: #fff; box-shadow: 0 6px 18px rgba(34,197,94,0.28); margin-bottom: 6px; flex-shrink: 0; }
+.rail-sep { width: 26px; height: 1px; background: var(--line); margin: 4px 0; flex-shrink: 0; }
+.rail-item { width: 42px; height: 42px; border: none; border-radius: 12px; background: transparent; color: #6e7688; display: grid; place-items: center; cursor: pointer; transition: all 0.15s; position: relative; flex-shrink: 0; }
+.rail-item .ico { width: 20px; height: 20px; }
+.rail-item:hover { background: #151a22; color: #e6ebf4; }
+.rail-item.active { background: var(--accent-soft); color: var(--accent); }
+.rail-item.active::before { content: ''; position: absolute; left: -11px; top: 11px; width: 3px; height: 20px; border-radius: 0 3px 3px 0; background: var(--accent); }
+.rail-bottom { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.rail-ver { font-size: 9px; font-weight: 800; letter-spacing: 0.5px; color: var(--text-mute); margin-top: 4px; }
+
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#titlebar { height: 52px; flex-shrink: 0; padding: 0 6px 0 14px; gap: 8px; background: #0b0e13; border-bottom: 1px solid var(--line); display: flex; align-items: center; }
+.tb-brand { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.tb-brand .brand-logo { width: 26px; height: 26px; border-radius: 8px; font-size: 13px; box-shadow: 0 4px 14px rgba(34,197,94,0.25); }
+.tb-brand .name { font-weight: 800; font-size: 13.5px; letter-spacing: 0.2px; white-space: nowrap; }
+.tb-brand .chev { color: var(--text-mute); width: 13px; height: 13px; }
+.tb-sep { width: 1px; height: 20px; background: var(--line); margin: 0 6px; flex-shrink: 0; }
+.tb-nav { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 12.5px; min-width: 0; }
+.tb-back { width: 28px; height: 28px; border: none; border-radius: 8px; background: transparent; color: var(--text-mute); font-size: 17px; font-weight: 800; cursor: pointer; display: grid; place-items: center; padding-bottom: 2px; flex-shrink: 0; }
+.tb-back:hover { background: #171c25; color: var(--text); }
+.tb-crumb { font-weight: 700; color: #cfd6e2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-right { margin-left: auto; display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.tb-icon { width: 32px; height: 32px; border: none; border-radius: 9px; background: transparent; color: var(--text-dim); display: grid; place-items: center; cursor: pointer; position: relative; transition: all 0.15s; }
+.tb-icon:hover { background: #171c25; color: var(--text); }
+.tb-icon .ico { width: 17px; height: 17px; }
+.tb-icon .ping { position: absolute; top: 7px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+.tb-version { font-size: 10px; font-weight: 800; color: var(--text-mute); padding: 3px 7px; border-radius: 999px; background: #141922; border: 1px solid var(--line); margin-right: 2px; }
+.title-account { margin: 0 2px 0 4px; display: flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px; border-radius: 999px; background: #141922; border: 1px solid var(--line); color: var(--text); font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+.title-account:hover { border-color: #2e3644; background: #171d27; }
+.title-account .avatar { width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(135deg, #22c55e, #0f7a3a); display: grid; place-items: center; font-size: 11px; font-weight: 900; color: #fff; flex-shrink: 0; }
+.title-account .dot { width: 7px; height: 7px; border-radius: 50%; background: #3a4150; flex-shrink: 0; }
+.title-account.logged .dot { background: var(--green); box-shadow: 0 0 7px var(--green); }
+.title-account .role { display: none; }
+.win-btns { display: flex; gap: 2px; margin-left: 2px; }
+.win-btn { width: 36px; height: 32px; border-radius: 8px; font-size: 12px; }
+#content { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 22px 26px 32px; background: transparent; border: none; border-radius: 0; backdrop-filter: none; }
+#content::-webkit-scrollbar { width: 10px; }
+#content::-webkit-scrollbar-thumb { background: #1e242f; border-radius: 10px; border: 2px solid #0a0c11; }
+#content::-webkit-scrollbar-track { background: transparent; }
+
+.lp { max-width: 1440px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+.lp-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; animation: fadeUp 0.3s ease both; }
+.lp-welcome { font-size: 21px; font-weight: 800; letter-spacing: -0.2px; display: flex; align-items: center; gap: 8px; }
+.lp-welcome .nick { color: #fff; }
+.lp-welcome .guest { color: var(--text-dim); font-weight: 700; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px rgba(34,197,94,0.8); flex-shrink: 0; }
+.lp-head-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.online-pill { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: #b8c0ce; white-space: nowrap; }
+.quick-tiles { display: flex; gap: 8px; }
+.qtile { width: 42px; height: 42px; border: none; border-radius: 12px; display: grid; place-items: center; color: #fff; cursor: pointer; background: linear-gradient(135deg, var(--q1), var(--q2)); box-shadow: 0 6px 16px rgba(0,0,0,0.35); transition: transform 0.15s, filter 0.15s; }
+.qtile:hover { transform: translateY(-2px); filter: brightness(1.08); }
+.qtile .ico { width: 19px; height: 19px; }
+
+.lp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 296px; gap: 18px; align-items: start; }
+.lp-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.lp-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.lp-hero { position: relative; height: 300px; border-radius: 18px; overflow: hidden; background: #070a10; border: 1px solid var(--line); box-shadow: 0 18px 40px rgba(0,0,0,0.35); animation: heroIn 0.42s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+.hero-art { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hero-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 22px; }
+.launch-btn { min-width: 340px; padding: 13px 36px 11px; border: none; border-radius: 12px; background: linear-gradient(180deg, #31e273 0%, #17b457 55%, #0f9d49 100%); color: #fff; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; box-shadow: 0 16px 34px rgba(34,197,94,0.32), inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -2px 0 rgba(0,0,0,0.18); transition: transform 0.15s, filter 0.15s; font-family: inherit; }
+.launch-btn:hover { transform: translateY(-2px); filter: brightness(1.05); }
+.launch-btn:active { transform: translateY(0); }
+.launch-btn:disabled { filter: grayscale(0.45) brightness(0.85); cursor: wait; transform: none; }
+.launch-btn.busy:disabled { filter: none; cursor: progress; }
+.launch-title { font-size: 23px; font-weight: 900; letter-spacing: 0.7px; text-shadow: 0 2px 4px rgba(0,0,0,0.28); line-height: 1.1; }
+.launch-sub { font-size: 11.5px; font-weight: 600; opacity: 0.95; display: flex; align-items: center; gap: 5px; }
+.launch-sub b { font-weight: 800; }
+.launch-sub .sep { opacity: 0.55; }
+.hero-gear { position: absolute; right: 12px; bottom: 12px; width: 34px; height: 34px; border-radius: 10px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.13); color: #d5dbe6; display: grid; place-items: center; cursor: pointer; transition: all 0.15s; z-index: 2; }
+.hero-gear:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.hero-gear .ico { width: 17px; height: 17px; }
+.hero-note { position: absolute; left: 14px; bottom: 14px; font-size: 10.5px; color: rgba(255,255,255,0.42); z-index: 2; }
+.hero-config { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5,8,12,0.72); backdrop-filter: blur(6px); z-index: 5; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.18s ease, visibility 0.18s ease; }
+.hero-config.open { opacity: 1; visibility: visible; pointer-events: auto; }
+.hc-panel { width: min(520px, calc(100% - 38px)); background: #0f131a; border: 1px solid #262d3a; border-radius: 16px; padding: 16px; box-shadow: 0 24px 60px rgba(0,0,0,0.55); transform: translateY(10px) scale(0.98); transition: transform 0.2s ease; }
+.hero-config.open .hc-panel { transform: translateY(0) scale(1); }
+.hc-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 800; margin-bottom: 12px; }
+.hc-close { width: 26px; height: 26px; border: none; border-radius: 8px; background: #171c25; color: var(--text-dim); cursor: pointer; font-size: 12px; }
+.hc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.hc-field label { display: block; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-mute); font-weight: 800; margin-bottom: 5px; }
+.hc-field input, .hc-field select { padding: 9px 11px; border-radius: 9px; font-size: 12px; }
+.hc-foot { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.hc-foot .btn { padding: 9px 14px; font-size: 11.5px; border-radius: 9px; }
+.hc-console { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 11px; background: var(--bg-soft); border: 1px solid var(--glass-border); border-radius: 9px; font-size: 11.5px; }
+.hc-console .switch { width: 40px; height: 22px; }
+.hc-console .switch::after { width: 16px; height: 16px; }
+.hc-console .switch.on::after { left: 21px; }
+.launch-status { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-dim); padding: 0 2px; min-height: 18px; }
+.launch-status .status-dot { width: 7px; height: 7px; }
+#status-text { flex: 0 1 auto; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px; animation: fadeUp 0.32s ease both; }
+.lp-side .panel:nth-child(2) { animation-delay: 0.05s; }
+.lp-side .panel:nth-child(3) { animation-delay: 0.1s; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 800; letter-spacing: 0.2px; margin-bottom: 11px; }
+.panel-head .muted { font-size: 10.5px; color: var(--text-mute); font-weight: 600; }
+.panel-head .link { font-size: 10.5px; color: var(--text-dim); background: none; border: none; cursor: pointer; font-family: inherit; font-weight: 700; }
+.panel-head .link:hover { color: var(--text); }
+.account-body { display: flex; flex-direction: column; gap: 10px; }
+.acct-row { display: flex; align-items: center; gap: 10px; }
+.acct-ava { width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, #22c55e, #0f7a3a); display: grid; place-items: center; font-weight: 900; font-size: 16px; color: #fff; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12); }
+.acct-name { font-size: 13.5px; font-weight: 800; display: flex; align-items: center; gap: 6px; }
+.acct-meta { font-size: 10.5px; color: var(--text-dim); margin-top: 2px; }
+.badge { display: inline-block; padding: 1px 6px; border-radius: 999px; font-size: 8.5px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; }
+.badge.role { background: rgba(34,197,94,0.14); color: #4ade80; }
+.badge.mute { background: rgba(250,204,21,0.14); color: #facc15; }
+.acct-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.acct-actions .btn { flex: 1 1 auto; padding: 8px 10px; font-size: 11px; border-radius: 9px; }
+.site-login-row { display: flex; flex-direction: column; gap: 7px; }
+.site-login-row input { padding: 9px 10px; border-radius: 9px; font-size: 11px; }
+.site-login-row .btn { padding: 9px 10px; font-size: 11px; border-radius: 9px; }
+.site-hint { color: var(--text-mute); font-size: 10px; line-height: 1.45; }
+.server-name { font-size: 13px; font-weight: 800; display: flex; align-items: center; gap: 7px; }
+.server-desc { font-size: 10.5px; color: var(--text-dim); margin: 4px 0 9px; }
+.server-ip { font-family: Consolas, 'Courier New', monospace; font-size: 11px; color: var(--text-dim); background: #0b0e13; border: 1px solid var(--line); padding: 7px 9px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.server-ip button { background: none; border: none; color: var(--text-mute); cursor: pointer; display: grid; place-items: center; padding: 2px; }
+.server-ip button:hover { color: var(--text); }
+.server-ip .ico { width: 14px; height: 14px; }
+.server-panel .btn { width: 100%; padding: 9px 12px; font-size: 11.5px; border-radius: 9px; }
+.status-panel { display: flex; flex-direction: column; gap: 6px; }
+.status-panel .status-line { display: flex; align-items: flex-start; gap: 8px; font-size: 10.5px; line-height: 1.45; }
+.status-panel .status-dot { margin-top: 3px; }
+
+.lp-news-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px; }
+.lp-news-head h2 { font-size: 15px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.lp-news-head .count { font-size: 10px; font-weight: 800; color: var(--text-mute); background: #141922; border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; }
+.lp-news-head .link { background: none; border: none; color: var(--text-dim); font-size: 10.5px; font-weight: 700; cursor: pointer; font-family: inherit; }
+.lp-news-head .link:hover { color: var(--text); }
+.news-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.news-card { position: relative; height: 168px; border-radius: 15px; overflow: hidden; border: 1px solid var(--line); cursor: pointer; background: #0d1017; text-align: left; font-family: inherit; color: #fff; transition: transform 0.15s, border-color 0.15s; padding: 0; animation: fadeUp 0.34s ease both; }
+.news-card:nth-child(2) { animation-delay: 0.06s; }
+.news-card:hover { transform: translateY(-2px); border-color: #2b3340; }
+.news-cover { position: absolute; inset: 0; padding: 16px; display: flex; flex-direction: column; justify-content: flex-end; gap: 3px; }
+.news-card.green .news-cover { background: radial-gradient(circle at 85% 15%, rgba(34,197,94,0.35), transparent 55%), linear-gradient(135deg, #0c2b1c 0%, #08130e 70%); }
+.news-card.red .news-cover { background: radial-gradient(circle at 85% 15%, rgba(239,68,68,0.32), transparent 55%), linear-gradient(135deg, #2b0c12 0%, #120609 70%); }
+.news-card.blue .news-cover { background: radial-gradient(circle at 85% 15%, rgba(59,130,246,0.32), transparent 55%), linear-gradient(135deg, #0c162b 0%, #070b13 70%); }
+.news-tag { font-size: 9px; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255,255,255,0.5); font-weight: 800; }
+.news-title { font-size: 17px; font-weight: 800; line-height: 1.15; max-width: 95%; }
+.news-desc { font-size: 10.5px; color: rgba(255,255,255,0.62); max-width: 92%; }
+.news-arrow { position: absolute; right: 12px; bottom: 12px; width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,0.12); display: grid; place-items: center; color: #fff; }
+.news-arrow .ico { width: 13px; height: 13px; }
+.news-big { position: absolute; right: 18px; top: 12px; font-size: 34px; font-weight: 900; letter-spacing: -1px; color: rgba(255,255,255,0.10); }
+.news-card:hover .news-arrow { background: rgba(255,255,255,0.2); }
+
+.page-title { font-size: 22px; }
+.page-sub { font-size: 12px; margin-bottom: 18px; }
+.settings-section, .admin-card, .result-item { background: var(--panel); border-color: var(--line); }
+.result-item:hover { border-color: var(--accent); }
+.btn { border-radius: 10px; padding: 11px 18px; font-size: 12px; }
+.btn-play { border-radius: 12px; }
+.theme-card { background: #0c0f15; }
+input, select { background: #0c0f15; border-color: var(--line); border-radius: 10px; }
+.page-status { padding: 8px 0; }
+@media (max-width: 900px) { .lp-grid { grid-template-columns: 1fr; } .lp-side { display: grid; grid-template-columns: 1fr 1fr; } .news-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .lp-side { grid-template-columns: 1fr; } .tb-version, .online-pill { display: none; } .launch-btn { min-width: 260px; } }
+
+.page-anim { animation: pageIn 0.26s ease both; }
+@keyframes pageIn { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+@keyframes fadeUp { from { opacity: 0; translate: 0 10px; } to { opacity: 1; translate: 0 0; } }
+@keyframes heroIn { from { opacity: 0; transform: translateY(14px) scale(0.992); } to { opacity: 1; transform: none; } }
+.launch-btn.busy { animation: launchPulse 1.4s ease-in-out infinite; }
+@keyframes launchPulse { 0%, 100% { box-shadow: 0 16px 34px rgba(34,197,94,0.32), inset 0 1px 0 rgba(255,255,255,0.35); } 50% { box-shadow: 0 16px 44px rgba(34,197,94,0.55), inset 0 1px 0 rgba(255,255,255,0.35); } }
+.rail-item, .tb-icon, .qtile, .news-card, .launch-btn, .btn, .switch, .theme-card { will-change: transform; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}
 </style>
 </head>
 <body>
 
-<div id="titlebar" class="pywebview-drag-region">
-  <div class="brand">
-    <div class="brand-logo">B</div>
-    <div class="brand-name">BritonLauncher</div>
-  </div>
-  <button class="title-account" id="title-account" onclick="titleAccountClick()" title="Войти через сайт">
-    <span class="dot"></span><span class="ta-nick">Войти</span>
-  </button>
-  <div class="win-btns">
-    <button class="win-btn" onclick="pywebview.api.minimize()">—</button>
-    <button class="win-btn" onclick="pywebview.api.maximize()">□</button>
-    <button class="win-btn close" onclick="pywebview.api.close()">✕</button>
-  </div>
-</div>
-
-<div class="container">
-  <div class="nav-bar">
-    <button class="nav-item active" data-page="launch" onclick="showPage('launch')">
+<div id="app">
+  <aside class="rail">
+    <div class="rail-logo">B</div>
+    <button class="rail-item active" data-page="launch" onclick="showPage('launch')" title="Launchpad">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
-      Запуск
     </button>
-    <button class="nav-item" data-page="mods" onclick="showPage('mods')">
+    <button class="rail-item" data-page="mods" onclick="showPage('mods')" title="Моды">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-      Моды
     </button>
-    <button class="nav-item" data-page="resourcepacks" onclick="showPage('resourcepacks')">
+    <button class="rail-item" data-page="resourcepacks" onclick="showPage('resourcepacks')" title="Ресурспаки">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
-      Ресурсы
     </button>
-    <button class="nav-item" data-page="shaders" onclick="showPage('shaders')">
+    <button class="rail-item" data-page="shaders" onclick="showPage('shaders')" title="Шейдеры">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg>
-      Шейдеры
     </button>
-    <button class="nav-item" data-page="admin" id="nav-admin" style="display:none" onclick="showPage('admin')">
+    <div class="rail-sep"></div>
+    <button class="rail-item" data-page="admin" id="nav-admin" style="display:none" onclick="showPage('admin')" title="Админка">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-      Админка
     </button>
-    <button class="nav-item" data-page="settings" onclick="showPage('settings')">
-      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      Настройки
-    </button>
-    <div class="nav-ver" title="Версия лаунчера">v3.8.1</div>
-  </div>
-  <div class="content" id="content">
-    <iframe id="custom-menu-iframe"></iframe>
+    <div class="rail-bottom">
+      <button class="rail-item" onclick="siteOpen()" title="Сайт BritonLauncher">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      </button>
+      <button class="rail-item" data-page="settings" onclick="showPage('settings')" title="Настройки">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <div class="rail-ver">v3.9</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div id="titlebar" class="pywebview-drag-region">
+      <div class="tb-brand">
+        <div class="brand-logo">B</div>
+        <span class="name">BritonLauncher</span>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="tb-sep"></div>
+      <div class="tb-nav">
+        <button class="tb-back" onclick="showPage('launch')" title="На главную">‹</button>
+        <span class="tb-crumb" id="tb-crumb">Launchpad</span>
+      </div>
+      <div class="tb-right">
+        <span class="tb-version">v3.9.0</span>
+        <button class="tb-icon" onclick="focusSearch()" title="Поиск модов">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <button class="tb-icon" id="tb-update" onclick="openUpdate()" title="Обновления">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="ping" id="tb-update-dot" style="display:none"></span>
+        </button>
+        <button class="tb-icon" onclick="showPage('settings')" title="Настройки">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="title-account" id="title-account" onclick="titleAccountClick()" title="Войти через сайт">
+          <span class="avatar">?</span><span class="ta-nick">Войти</span><span class="dot"></span>
+        </button>
+        <div class="win-btns">
+          <button class="win-btn" onclick="pywebview.api.minimize()">—</button>
+          <button class="win-btn" onclick="pywebview.api.maximize()">□</button>
+          <button class="win-btn close" onclick="pywebview.api.close()">✕</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="content" id="content">
+      <iframe id="custom-menu-iframe"></iframe>
+    </div>
   </div>
 </div>
 
@@ -1083,6 +1285,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 let selectedItem = null;
 let selectedType = null;
 const state = { version: '1.20.1', loader: 'Vanilla' };
+let launchGen = 0;
 
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1114,9 +1317,11 @@ function setPlayBusy(b) {
   const btn = document.getElementById('play-btn');
   if (!btn) return;
   btn.disabled = b;
-  btn.innerHTML = b
-    ? '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Запуск...'
-    : '<svg class="ico" viewBox="0 0 24 24" fill="currentColor" style="width:20px;height:20px;"><polygon points="6 3 20 12 6 21 6 3" stroke="none"/></svg> ИГРАТЬ';
+  btn.classList.toggle('busy', b);
+  const t = btn.querySelector('.launch-title');
+  const s = btn.querySelector('.launch-sub');
+  if (t) t.textContent = b ? 'ЗАПУСК...' : 'LAUNCH GAME';
+  if (s) s.style.opacity = b ? '0.55' : '0.95';
 }
 
 async function saveNick() {
@@ -1126,42 +1331,55 @@ async function saveNick() {
   if (res && res.ok) showToast('Ник сохранён');
 }
 async function startGame(serverIp = null) {
-  const nick = (document.getElementById('nick')?.value || '').trim();
+  const nickInput = document.getElementById('nick');
+  const nick = (nickInput?.value || window.__savedNick || '').trim();
   const cfg = await window.pywebview.api.get_config();
-  await window.pywebview.api.launch_game(nick, state.version, state.loader, cfg.ram, cfg.show_console, serverIp);
+  const res = await window.pywebview.api.launch_game(nick, state.version, state.loader, cfg.ram, cfg.show_console, serverIp);
+  if (res && res.ok === false) {
+    setStatus(res.error || 'Не удалось запустить игру', 'var(--red)', '❌');
+    setPlayBusy(false);
+  }
 }
 
 function updateAdminNav(acc) {
   const nav = document.getElementById('nav-admin');
-  if (nav) nav.style.display = acc && acc.logged_in && acc.role === 'admin' ? 'flex' : 'none';
+  if (nav) nav.style.display = acc && acc.logged_in && acc.role === 'admin' ? 'grid' : 'none';
 }
 
 function updateTitleAccount(acc) {
   const el = document.getElementById('title-account');
   if (!el) return;
   window.__titleAcc = acc || null;
-  if (acc && acc.logged_in) {
-    el.classList.toggle('admin', acc.role === 'admin');
-    el.innerHTML = '<span class="dot"></span><span class="ta-nick">' + escapeHtml(acc.nick) + '</span>'
-      + (acc.role === 'admin' ? '<span class="role">' + (acc.main ? 'ГЛАВНЫЙ АДМИН' : 'АДМИН') + '</span>' : '')
-      + (acc.muted ? '<span class="role muted">МУТ</span>' : '');
-    el.title = acc.role === 'admin' ? 'Открыть админ-панель' : 'Аккаунт сайта';
-  } else {
-    el.classList.remove('admin');
-    el.innerHTML = '<span class="dot"></span><span class="ta-nick">Войти</span>';
-    el.title = 'Войти через сайт';
-  }
+  const logged = !!(acc && acc.logged_in);
+  const nick = logged ? acc.nick : 'Войти';
+  const initial = logged ? String(acc.nick || '?').charAt(0).toUpperCase() : '?';
+  el.classList.toggle('logged', logged);
+  el.classList.toggle('admin', logged && acc.role === 'admin');
+  el.innerHTML = '<span class="avatar">' + escapeHtml(initial) + '</span>'
+    + '<span class="ta-nick">' + escapeHtml(nick) + '</span>'
+    + '<span class="dot"></span>';
+  el.title = logged
+    ? (acc.role === 'admin' ? 'Открыть админ-панель' : 'Аккаунт сайта')
+    : 'Войти через сайт';
 }
 
 function titleAccountClick() {
   const acc = window.__titleAcc;
-  if (acc && acc.logged_in && acc.role === 'admin') {
-    showPage('admin');
-    return;
+  if (acc && acc.logged_in && acc.role === 'admin') { showPage('admin'); return; }
+  if (acc && acc.logged_in) { siteOpen(); return; }
+  if (document.body.dataset.activePage !== 'launch') {
+    showPage('launch').then(() => setTimeout(focusSiteCode, 280));
+  } else {
+    focusSiteCode();
   }
-  showPage('launch').then(() => {
-    setTimeout(() => document.getElementById('site-code')?.focus(), 250);
-  });
+}
+
+function focusSiteCode() {
+  const input = document.getElementById('site-code');
+  if (input) {
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    input.focus();
+  }
 }
 
 function roleLabel(acc) {
@@ -1173,24 +1391,37 @@ async function refreshAccount() {
   const acc = await window.pywebview.api.get_site_account();
   updateAdminNav(acc);
   updateTitleAccount(acc);
+
+  const welcome = document.getElementById('welcome-nick');
+  if (welcome) {
+    welcome.textContent = acc.logged_in ? acc.nick : (window.__savedNick || 'Гость');
+    welcome.classList.toggle('guest', !acc.logged_in);
+  }
+
   const box = document.getElementById('account-box');
   if (!box) return;
   if (acc.logged_in) {
-    box.innerHTML = '<div class="account-head">' + escapeHtml(acc.nick.charAt(0).toUpperCase()) + '</div>'
-      + '<div>Вход через сайт: <span class="account-name">' + escapeHtml(acc.nick) + '</span>'
-      + '<span class="account-role">' + roleLabel(acc) + '</span>'
-      + (acc.muted ? '<span class="account-mute">МУТ</span>' : '') + '</div>'
-      + '<div class="spacer"></div>'
-      + (acc.role === 'admin' ? '<button class="btn" onclick="goAdmin()">Админ-панель</button>' : '')
-      + '<button class="btn" onclick="siteLogout()">Выйти</button>';
-  } else {
-    box.innerHTML = '<div style="flex:1">'
-      + '<div>Аккаунт сайта: <b>не выполнен</b></div>'
-      + '<div class="site-login-row"><input id="site-code" placeholder="Вставь код с сайта" spellcheck="false" />'
-      + '<button class="btn green" onclick="siteLogin()">Войти по коду</button>'
-      + '<button class="btn" onclick="siteOpen()">Открыть сайт</button></div>'
-      + '<div class="site-hint">Сайт → раздел «Аккаунт» → «Получить код для лаунчера».</div>'
+    box.innerHTML = '<div class="acct-row">'
+      + '<div class="acct-ava">' + escapeHtml(acc.nick.charAt(0).toUpperCase()) + '</div>'
+      + '<div><div class="acct-name">' + escapeHtml(acc.nick)
+      + '<span class="badge role">' + roleLabel(acc) + '</span>'
+      + (acc.muted ? '<span class="badge mute">МУТ</span>' : '') + '</div>'
+      + '<div class="acct-meta">Вход через сайт · ' + escapeHtml(acc.login_at || '—') + '</div></div>'
+      + '</div>'
+      + '<div class="acct-actions">'
+      + (acc.role === 'admin' ? '<button class="btn" onclick="goAdmin()">Админка</button>' : '')
+      + '<button class="btn" onclick="siteOpen()">Сайт</button>'
+      + '<button class="btn" onclick="siteLogout()">Выйти</button>'
       + '</div>';
+  } else {
+    box.innerHTML = '<div class="acct-row">'
+      + '<div class="acct-ava">?</div>'
+      + '<div><div class="acct-name">Гость</div>'
+      + '<div class="acct-meta">Вход по коду с сайта</div></div></div>'
+      + '<div class="site-login-row"><input id="site-code" placeholder="Вставь код с сайта" spellcheck="false" />'
+      + '<button class="btn green" onclick="siteLogin()">Войти по коду</button></div>'
+      + '<button class="btn" onclick="siteOpen()">Открыть сайт</button>'
+      + '<div class="site-hint">Сайт → «Аккаунт» → «Получить код для лаунчера».</div>';
   }
 }
 
@@ -1225,7 +1456,7 @@ function goAdmin() { showPage('admin'); }
 async function renderAdminPage() {
   const acc = await window.pywebview.api.get_site_account();
   const content = document.getElementById('content');
-  content.style.padding = '28px 32px';
+  content.style.padding = '';
   if (!acc.logged_in || acc.role !== 'admin') {
     content.innerHTML = '<div class="page-title"><span class="grad">Админ-панель</span></div>'
       + '<div class="page-sub">Доступ только для администраторов сайта.</div>';
@@ -1254,7 +1485,10 @@ async function openSiteAdmin() {
 
 async function showPage(page) {
   document.body.dataset.activePage = page;
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  document.querySelectorAll('.rail-item[data-page]').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  const PAGE_NAMES = { launch: 'Launchpad', mods: 'Моды', resourcepacks: 'Ресурспаки', shaders: 'Шейдеры', settings: 'Настройки', admin: 'Админка' };
+  const crumb = document.getElementById('tb-crumb');
+  if (crumb) crumb.textContent = PAGE_NAMES[page] || 'Launchpad';
   selectedItem = null;
   selectedType = null;
 
@@ -1275,81 +1509,315 @@ async function showPage(page) {
       iframe.srcdoc = menuData.html;
       iframe.style.display = 'block';
       content.style.padding = '0';
+      content.classList.remove('page-anim');
       return;
-    } else {
-      content.style.padding = '28px 32px';
-      renderLaunch();
     }
+    content.style.padding = '';
+    await renderLaunch();
   } else {
-    content.style.padding = '28px 32px';
-    if (page === 'admin') renderAdminPage();
-    else if (page === 'settings') renderSettings();
+    content.style.padding = '';
+    if (page === 'admin') await renderAdminPage();
+    else if (page === 'settings') await renderSettings();
     else renderSearchPage(page);
+  }
+  content.classList.remove('page-anim');
+  void content.offsetWidth;
+  content.classList.add('page-anim');
+}
+
+function seeded(seed) {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return () => (s = (s * 16807) % 2147483647) / 2147483647;
+}
+
+function heroStars() {
+  const rnd = seeded(429);
+  let out = '';
+  for (let i = 0; i < 90; i++) {
+    const x = (rnd() * 900).toFixed(0);
+    const y = (rnd() * 300).toFixed(0);
+    const r = (rnd() * 1.2 + 0.3).toFixed(2);
+    const o = (rnd() * 0.55 + 0.12).toFixed(2);
+    out += `<circle cx="${x}" cy="${y}" r="${r}" fill="#dbe6ff" opacity="${o}"/>`;
+  }
+  return out;
+}
+
+function isoCube(x, y, s, top, left, right, stroke) {
+  const w = (s * 0.87).toFixed(1);
+  const h = (s * 0.5).toFixed(1);
+  return `<g transform="translate(${x} ${y})">`
+    + `<polygon points="0,${-s} ${w},${-h} 0,0 ${-w},${-h}" fill="${top}" stroke="${stroke}" stroke-width="1"/>`
+    + `<polygon points="${-w},${-h} 0,0 0,${s} ${-w},${h}" fill="${left}" stroke="${stroke}" stroke-width="1"/>`
+    + `<polygon points="${w},${-h} 0,0 0,${s} ${w},${h}" fill="${right}" stroke="${stroke}" stroke-width="1"/>`
+    + `</g>`;
+}
+
+function updateLaunchSub() {
+  const v = document.getElementById('launch-version');
+  const l = document.getElementById('launch-loader');
+  if (v) v.textContent = state.version;
+  if (l) l.textContent = state.loader;
+}
+
+function toggleLaunchConfig(force) {
+  const el = document.getElementById('hero-config');
+  if (!el) return;
+  const open = typeof force === 'boolean' ? force : !el.classList.contains('open');
+  el.classList.toggle('open', open);
+  if (open) {
+    setTimeout(() => document.getElementById('nick')?.focus(), 180);
   }
 }
 
-async function renderLaunch() {
+async function saveLaunchConfig() {
+  const nick = (document.getElementById('nick')?.value || '').trim();
+  const ram = (document.getElementById('ram')?.value || '4G').trim() || '4G';
+  const show_console = document.getElementById('console-switch')?.classList.contains('on') || false;
+  const loaderSel = document.getElementById('modloader');
+  const verSel = document.getElementById('version');
+  if (verSel) state.version = verSel.value || state.version;
+  if (loaderSel) state.loader = loaderSel.value || state.loader;
+  if (nick) {
+    const res = await window.pywebview.api.save_nickname(nick);
+    if (!res || !res.ok) { showToast('Ник не сохранён'); return; }
+    window.__savedNick = nick;
+  }
   const cfg = await window.pywebview.api.get_config();
+  await window.pywebview.api.save_settings({
+    theme: cfg.theme || 'lunar',
+    ram,
+    show_console,
+    version: state.version,
+    modloader: state.loader
+  });
+  updateLaunchSub();
+  toggleLaunchConfig(false);
+  refreshAccount();
+  showToast('Настройки запуска сохранены');
+}
+
+async function copyServerIp() {
+  const ip = 'f1.rustix.me:38391';
+  try {
+    await navigator.clipboard.writeText(ip);
+  } catch (e) {
+    const t = document.createElement('textarea');
+    t.value = ip;
+    document.body.appendChild(t);
+    t.select();
+    try { document.execCommand('copy'); } catch (_) {}
+    t.remove();
+  }
+  showToast('IP сервера скопирован');
+}
+
+function focusSearch() {
+  showPage('mods').then(() => {
+    setTimeout(() => document.getElementById('search-input')?.focus(), 260);
+  });
+}
+
+function openUpdate() {
+  const up = window.__update;
+  if (up && up.ok && up.update_available) {
+    window.pywebview.api.open_url('https://github.com/KostyaProcrom/BritonLauncher/releases/latest');
+  } else {
+    showToast('Обновлений нет — версия актуальна');
+  }
+}
+
+function openReleases() {
+  window.pywebview.api.open_url('https://github.com/KostyaProcrom/BritonLauncher/releases/latest');
+}
+
+async function renderLaunch() {
+  const gen = ++launchGen;
+  const cfg = await window.pywebview.api.get_config();
+  if (document.body.dataset.activePage !== 'launch') return;
+  window.__savedNick = cfg.nickname || '';
+  window.__savedTheme = cfg.theme || 'lunar';
+  state.version = cfg.version || state.version;
+  state.loader = cfg.modloader || state.loader;
+
+  const stars = heroStars();
+  const cubeLeft = isoCube(150, 148, 38, '#2fd276', '#0c3b22', '#146b3c', 'rgba(110,255,170,0.35)')
+    + isoCube(202, 194, 20, '#1f9d58', '#082817', '#0f4d2b', 'rgba(110,255,170,0.25)')
+    + isoCube(118, 196, 14, '#39e08a', '#0a2e1b', '#12603a', 'rgba(110,255,170,0.2)');
+  const cubeRight = isoCube(750, 146, 34, '#c7d2e2', '#4d5563', '#7b8698', 'rgba(255,255,255,0.22)')
+    + isoCube(696, 190, 18, '#8e99aa', '#363c47', '#5c6575', 'rgba(255,255,255,0.16)')
+    + isoCube(618, 78, 11, '#ff6b6b', '#5a1111', '#8a1c1c', 'rgba(255,120,120,0.3)');
+
   document.getElementById('content').innerHTML = `
-    <div class="hero">
-      <div class="hero-title">
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:30px;height:30px;"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
-        Готов к игре?
+  <div class="lp">
+    <div class="lp-head">
+      <div class="lp-welcome">С возвращением, <span class="nick" id="welcome-nick">Гость</span><span class="live-dot"></span></div>
+      <div class="lp-head-right">
+        <div class="online-pill"><span class="live-dot"></span> Онлайн</div>
+        <div class="quick-tiles">
+          <button class="qtile" style="--q1:#8b5cf6;--q2:#6d28d9" onclick="showPage('mods')" title="Моды">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          </button>
+          <button class="qtile" style="--q1:#f59e0b;--q2:#dc2626" onclick="showPage('resourcepacks')" title="Ресурспаки">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.6-.7 1.6-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1a1.6 1.6 0 0 1 1.7-1.7h2c3 0 5.5-2.5 5.5-5.5C22 6 17.5 2 12 2z"/><circle cx="13.5" cy="6.5" r=".6" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".6" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".6" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".6" fill="currentColor"/></svg>
+          </button>
+          <button class="qtile" style="--q1:#06b6d4;--q2:#2563eb" onclick="showPage('shaders')" title="Шейдеры">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg>
+          </button>
+          <button class="qtile" style="--q1:#22c55e;--q2:#0f9d49" onclick="siteOpen()" title="Сайт">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </button>
+          <button class="qtile" style="--q1:#ec4899;--q2:#a855f7" onclick="showPage('settings')" title="Настройки">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+        </div>
       </div>
-      <div class="hero-sub">Настрой параметры и жми «Играть»</div>
-      <div id="account-box" class="account-box"><div class="spacer">Проверка аккаунта...</div></div>
-      <div class="hero-form">
-        <div class="hero-field"><label>Никнейм (офлайн)</label>
-          <div class="row">
-            <input id="nick" placeholder="Steve" value="${escapeHtml(cfg.nickname || '')}" />
-            <button class="btn-icon" onclick="saveNick()" title="Сохранить">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    </div>
+
+    <div class="lp-grid">
+      <div class="lp-main">
+        <div class="lp-hero">
+          <svg class="hero-art" viewBox="0 0 900 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <defs>
+              <filter id="heroBlur" x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="38"/>
+              </filter>
+            </defs>
+            <rect width="900" height="300" fill="#070a10"/>
+            <ellipse cx="150" cy="160" rx="200" ry="120" fill="#0f5a34" opacity="0.55" filter="url(#heroBlur)"/>
+            <ellipse cx="770" cy="180" rx="175" ry="110" fill="#123b5c" opacity="0.45" filter="url(#heroBlur)"/>
+            <ellipse cx="450" cy="330" rx="330" ry="120" fill="#3b0b12" opacity="0.45" filter="url(#heroBlur)"/>
+            ${stars}
+            ${cubeLeft}
+            ${cubeRight}
+          </svg>
+          <div class="hero-center">
+            <button id="play-btn" class="launch-btn" onclick="startGame()">
+              <span class="launch-title">LAUNCH GAME</span>
+              <span class="launch-sub">BritonLauncher <b id="launch-version">${escapeHtml(state.version)}</b><span class="sep">•</span><span id="launch-loader">${escapeHtml(state.loader)}</span></span>
             </button>
           </div>
+          <div class="hero-note">v3.9.0 · BritonLauncher</div>
+          <button class="hero-gear" onclick="toggleLaunchConfig()" title="Настройки запуска">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+          <div class="hero-config" id="hero-config" onclick="if(event.target===this)toggleLaunchConfig(false)">
+            <div class="hc-panel">
+              <div class="hc-head"><span>Настройки запуска</span><button class="hc-close" onclick="toggleLaunchConfig(false)">✕</button></div>
+              <div class="hc-grid">
+                <div class="hc-field"><label>Ник</label><input id="nick" maxlength="16" placeholder="Steve" value="${escapeHtml(cfg.nickname || '')}" /></div>
+                <div class="hc-field"><label>Память</label><input id="ram" placeholder="4G" value="${escapeHtml(cfg.ram || '4G')}" /></div>
+              </div>
+              <div class="hc-grid">
+                <div class="hc-field"><label>Версия</label><select id="version"></select></div>
+                <div class="hc-field"><label>Модлоадер</label>
+                  <select id="modloader">
+                    <option value="Vanilla" ${cfg.modloader === 'Vanilla' ? 'selected' : ''}>Vanilla</option>
+                    <option value="Fabric" ${cfg.modloader === 'Fabric' ? 'selected' : ''}>Fabric</option>
+                    <option value="Forge" ${cfg.modloader === 'Forge' ? 'selected' : ''}>Forge</option>
+                  </select>
+                </div>
+              </div>
+              <div class="hc-foot">
+                <div class="hc-console"><span>Окно консоли</span><div id="console-switch" class="switch ${cfg.show_console ? 'on' : ''}" onclick="this.classList.toggle('on')"></div></div>
+                <button class="btn green" onclick="saveLaunchConfig()">Сохранить</button>
+                <button class="btn" onclick="showPage('settings')">Все настройки</button>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="hero-field"><label>Версия</label><select id="version"></select></div>
-        <div class="hero-field"><label>Модлоадер</label>
-          <select id="modloader">
-            <option value="Vanilla" ${cfg.modloader==='Vanilla'?'selected':''}>Vanilla</option>
-            <option value="Fabric" ${cfg.modloader==='Fabric'?'selected':''}>Fabric</option>
-            <option value="Forge" ${cfg.modloader==='Forge'?'selected':''}>Forge</option>
-          </select>
+
+        <div class="lp-news-head">
+          <h2>Новости <span class="count">2</span></h2>
+          <button class="link" onclick="openReleases()">Все обновления ↗</button>
+        </div>
+        <div class="news-grid">
+          <button class="news-card green" onclick="openReleases()">
+            <div class="news-cover">
+              <span class="news-big">3.9</span>
+              <span class="news-tag">Обновление лаунчера</span>
+              <span class="news-title">Новый Launchpad</span>
+              <span class="news-desc">Аккаунт, сервер и запуск игры в одном окне.</span>
+              <span class="news-arrow"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+          </button>
+          <button class="news-card red" onclick="showPage('settings')">
+            <div class="news-cover">
+              <span class="news-big">RP</span>
+              <span class="news-tag">Ресурспак</span>
+              <span class="news-title">BRITON Menu</span>
+              <span class="news-desc">Брендовое меню Minecraft — установка в один клик.</span>
+              <span class="news-arrow"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </div>
+          </button>
         </div>
       </div>
-      <button id="play-btn" class="btn-play" onclick="startGame()">
-        <svg class="ico" viewBox="0 0 24 24" fill="currentColor" style="width:20px;height:20px;"><polygon points="6 3 20 12 6 21 6 3" stroke="none"/></svg> ИГРАТЬ
-      </button>
-      <div class="status-box"><div class="status-dot" id="status-dot"></div><span id="status-text">Проверка обновлений...</span></div>
-    </div>`;
 
+      <div class="lp-side">
+        <div class="panel account-panel">
+          <div class="panel-head"><span>Аккаунт</span><span class="live-dot"></span></div>
+          <div id="account-box" class="account-body"><div class="site-hint">Проверка аккаунта...</div></div>
+        </div>
+        <div class="panel server-panel">
+          <div class="panel-head"><span>Сервер</span><span class="muted">BritonTime</span></div>
+          <div class="server-name"><span class="live-dot"></span> BritonTime</div>
+          <div class="server-desc">Выживание и мини-игры · 1.20.1–1.21.11</div>
+          <div class="server-ip"><span>f1.rustix.me:38391</span>
+            <button onclick="copyServerIp()" title="Скопировать IP"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+          </div>
+          <button class="btn green" onclick="startGame('f1.rustix.me:38391')">Зайти на сервер</button>
+        </div>
+        <div class="panel status-panel">
+          <div class="panel-head"><span>Состояние</span></div>
+          <div class="status-line"><div class="status-dot" id="status-dot"></div><span id="status-text">Проверка обновлений...</span></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  const loaderSel = document.getElementById('modloader');
+  if (loaderSel) {
+    state.loader = loaderSel.value || state.loader;
+    loaderSel.addEventListener('change', () => { state.loader = loaderSel.value; updateLaunchSub(); });
+  }
+  updateLaunchSub();
+  refreshAccount();
+  loadVersionOptions(cfg.version, gen);
+
+  window.pywebview.api.check_updates().then(up => {
+    if (launchGen !== gen) return;
+    window.__update = up;
+    const dot = document.getElementById('tb-update-dot');
+    if (dot) dot.style.display = up.ok && up.update_available ? 'block' : 'none';
+    if (up.ok && up.update_available) {
+      setStatus('Доступно обновление v' + up.latest, 'var(--orange)', '⏳');
+    } else if (up.ok) {
+      setStatus('Версия актуальна (v' + (up.current || '') + ')', 'var(--green)', '✅');
+    } else {
+      setStatus('Проверка обновлений недоступна', 'var(--text-dim)', 'ℹ️');
+    }
+  });
+}
+
+async function loadVersionOptions(currentVersion, gen) {
   const versions = await window.pywebview.api.get_versions();
+  if (gen !== launchGen) return;
   const sel = document.getElementById('version');
+  if (!sel) return;
   sel.innerHTML = '';
   let found = false;
   (versions || []).forEach(v => {
     const o = document.createElement('option');
-    o.value = v; o.textContent = v;
-    if (v === cfg.version) { o.selected = true; found = true; }
+    o.value = v;
+    o.textContent = v;
+    if (v === currentVersion) { o.selected = true; found = true; }
     sel.appendChild(o);
   });
   if (!found && sel.options.length) sel.selectedIndex = 0;
-  state.version = sel.value || '1.20.1';
-
-  const loaderSel = document.getElementById('modloader');
-  state.loader = loaderSel.value || 'Vanilla';
-  sel.addEventListener('change', () => { state.version = sel.value; });
-  loaderSel.addEventListener('change', () => { state.loader = loaderSel.value; });
-
-  refreshAccount();
-
-  const up = await window.pywebview.api.check_updates();
-  if (up.ok && up.update_available) {
-    setStatus('Доступно обновление v' + up.latest, 'var(--orange)', '⏳');
-  } else if (up.ok) {
-    setStatus('Версия актуальна (v' + (up.current || '') + ')', 'var(--green)', '✅');
-  } else {
-    setStatus('Проверка обновлений недоступна', 'var(--text-dim)', 'ℹ️');
-  }
+  state.version = sel.value || state.version;
+  sel.addEventListener('change', () => { state.version = sel.value; updateLaunchSub(); });
+  updateLaunchSub();
 }
 
 const PAGE_INFO = {
@@ -1410,6 +1878,7 @@ async function downloadSelected() {
 async function renderSettings() {
   const cfg = await window.pywebview.api.get_config();
   const themes = [
+    { id: 'lunar', name: 'Lunar', g1: '#22c55e', g2: '#0f7a3a' },
     { id: 'purple', name: 'Purple Night', g1: '#a855f7', g2: '#ec4899' },
     { id: 'ocean', name: 'Ocean', g1: '#06b6d4', g2: '#3b82f6' },
     { id: 'forest', name: 'Forest', g1: '#10b981', g2: '#84cc16' },
@@ -1421,7 +1890,7 @@ async function renderSettings() {
 
   document.getElementById('content').innerHTML = `
     <div class="page-title"><span class="grad">Настройки</span></div>
-    <div class="page-sub">BritonLauncher v3.8.1</div>
+    <div class="page-sub">BritonLauncher v3.9.0</div>
 
     <div class="settings-section" style="margin-bottom:14px;">
       <h3>Тема оформления</h3>
@@ -1535,7 +2004,7 @@ async function saveSettings() {
   const show_console = document.getElementById('console-switch').classList.contains('on');
   const cfg = await window.pywebview.api.get_config();
   await window.pywebview.api.save_settings({
-    theme: cfg.theme || 'redsea',
+    theme: cfg.theme || 'lunar',
     ram,
     show_console,
     version: state.version,
@@ -1547,10 +2016,10 @@ async function saveSettings() {
 window.addEventListener('pywebviewready', async () => {
   try {
     const cfg = await window.pywebview.api.get_config();
-    applyTheme(cfg.theme || 'redsea');
+    applyTheme(cfg.theme || 'lunar');
     state.version = cfg.version || state.version;
     state.loader = cfg.modloader || state.loader;
-  } catch (e) { applyTheme('redsea'); }
+  } catch (e) { applyTheme('lunar'); }
   showPage('launch');
   refreshAccount();
 });
@@ -1566,12 +2035,12 @@ if __name__ == "__main__":
         pass
     api = Api()
     window = webview.create_window(
-        "BritonLauncher v3.8.1",
+        "BritonLauncher v3.9.0",
         html=HTML,
         js_api=api,
-        width=1180,
-        height=860,
-        min_size=(1000, 720),
+        width=1280,
+        height=820,
+        min_size=(1100, 720),
         frameless=True,
         easy_drag=False,
         background_color="#0b0d12",
