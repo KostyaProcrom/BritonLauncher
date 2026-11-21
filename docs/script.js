@@ -57,118 +57,52 @@ const yearEl = document.getElementById('year');
 if (yearEl) yearEl.textContent = new Date().getFullYear();
 
 // =========================================================
-//  PlayerDATA — аккаунты и роли (хранятся в localStorage)
+//  BritonLauncher DB — аккаунты в Supabase
 // =========================================================
-const PD_KEY = 'britonlauncher.playerdata';
-const SESSION_KEY = 'britonlauncher.session';
+const SUPA_URL = 'https://lmjizrowtxuwlovbirge.supabase.co';
+const SUPA_KEY = 'sb_publishable_R4FofdxSpJhuzDvahy1gKw_Q1Dfmbob';
+const TOKEN_KEY = 'britonlauncher.token';
+const LEGACY_PD_KEY = 'britonlauncher.playerdata';
+const LEGACY_SESSION_KEY = 'britonlauncher.session';
 const ADMINS = ['KostyaKosmos', 'BritonLauncher'];
-// Подпись кода для лаунчера. Секрет виден в исходниках сайта — это защита от
-// случайной подмены, а не настоящая серверная авторизация.
-const LAUNCHER_SECRET = '577b977f8870b4a173026dc3ca5962300ad353f38cb0a4ba9464b41f4daba6b3';
+
+let CURRENT = null;
+let ADMIN_DATA = null;
+let adminSeq = 0;
+let adminDebounce = null;
+
+const LOG_LABELS = {
+  register: 'зарегистрировался',
+  launcher_login: 'вошёл в лаунчер',
+  ban: 'забанил',
+  unban: 'разбанил',
+  mute: 'замутил',
+  unmute: 'размутил',
+  promote: 'выдал админа',
+  demote: 'снял админа',
+  delete: 'удалил',
+};
 
 function isAdminNick(nick) {
   const low = String(nick || '').toLowerCase();
   return ADMINS.some((a) => a.toLowerCase() === low);
 }
 
-function pdLoad() {
-  try {
-    const raw = localStorage.getItem(PD_KEY);
-    const data = raw ? JSON.parse(raw) : null;
-    if (data && data.players && typeof data.players === 'object') return data;
-  } catch (e) {}
-  return { players: {} };
-}
-
-function pdSave(data) {
-  try {
-    localStorage.setItem(PD_KEY, JSON.stringify(data));
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
-function findPlayerKey(players, nick) {
-  const low = String(nick || '').toLowerCase();
-  return Object.keys(players).find((k) => k.toLowerCase() === low) || null;
-}
-
-function isMainAdmin(nick) {
+function isMainAdmin(nick, profile) {
+  if (profile && profile.main) return true;
   return String(nick || '').toLowerCase() === ADMINS[0].toLowerCase();
 }
 
-/* ---------- код для лаунчера ---------- */
-function b64url(bytes) {
-  let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+function isBanned(player) {
+  return !!(player && player.banned);
 }
 
-async function makeLauncherCode() {
-  const me = currentPlayer();
-  if (!me) return;
-  if (!crypto?.subtle) return;
-
-  const status = document.getElementById('launcher-code-status');
-  if (isBanned(me.player)) {
-    if (status) status.textContent = 'Аккаунт забанен: ' + (me.player.banReason || 'без причины');
-    return;
-  }
-  if (status) status.textContent = 'Генерация...';
-
-  const payload = {
-    n: me.nick,
-    r: me.role,
-    m: isMainAdmin(me.nick) ? 1 : 0,
-    mu: isMuted(me.player) ? 1 : 0,
-    t: Date.now(),
-  };
-  const payloadB64 = b64url(new TextEncoder().encode(JSON.stringify(payload)));
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(LAUNCHER_SECRET),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadB64));
-  const code = 'BLS1.' + payloadB64 + '.' + b64url(new Uint8Array(sig));
-
-  document.getElementById('launcher-code').value = code;
-  document.getElementById('launcher-code-result').classList.remove('hidden');
-  if (status) status.textContent = 'Код действует 7 дней.';
+function isMuted(player) {
+  return !!(player && player.muted);
 }
 
-async function copyLauncherCode() {
-  const el = document.getElementById('launcher-code');
-  const status = document.getElementById('launcher-code-status');
-  if (!el || !el.value) return;
-  try {
-    await navigator.clipboard.writeText(el.value);
-    if (status) status.textContent = 'Скопировано ✓';
-  } catch (e) {
-    el.select();
-    document.execCommand('copy');
-    if (status) status.textContent = 'Скопировано ✓';
-  }
-}
-
-function roleOf(nick, player) {
-  if (isAdminNick(nick)) return 'admin';
-  return player && player.role === 'admin' ? 'admin' : 'player';
-}
-
-function randomSalt() {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function hashPassword(password, salt) {
-  const enc = new TextEncoder().encode(salt + ':' + password);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+function currentPlayer() {
+  return CURRENT;
 }
 
 function escapeHtml(s) {
@@ -177,16 +111,97 @@ function escapeHtml(s) {
   );
 }
 
-function currentPlayer() {
-  const nick = localStorage.getItem(SESSION_KEY);
-  if (!nick) return null;
-  const data = pdLoad();
-  const key = findPlayerKey(data.players, nick);
-  if (!key) {
-    localStorage.removeItem(SESSION_KEY);
-    return null;
+/* ---------- запросы к Supabase ---------- */
+async function sbRpc(fn, params) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const res = await fetch(`${SUPA_URL}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPA_KEY,
+        Authorization: `Bearer ${SUPA_KEY}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(params || {}),
+      signal: ctrl.signal,
+    });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (e) {}
+    if (!res.ok) {
+      const msg = (data && (data.message || data.hint || data.error)) || `Ошибка базы (${res.status})`;
+      throw new Error(msg);
+    }
+    return data || { ok: false, error: 'Пустой ответ базы' };
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('База не отвечает — проверь интернет');
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return { nick: key, role: roleOf(key, data.players[key]), player: data.players[key] };
+}
+
+/* ---------- старые локальные аккаунты (только для переноса) ---------- */
+function legacyLoad() {
+  try {
+    const raw = localStorage.getItem(LEGACY_PD_KEY);
+    const data = raw ? JSON.parse(raw) : null;
+    if (data && data.players && typeof data.players === 'object') return data;
+  } catch (e) {}
+  return { players: {} };
+}
+
+function legacyFind(players, nick) {
+  const low = String(nick || '').toLowerCase();
+  const key = Object.keys(players).find((k) => k.toLowerCase() === low);
+  return key ? { nick: key, player: players[key] } : null;
+}
+
+async function hashPassword(password, salt) {
+  const enc = new TextEncoder().encode(salt + ':' + password);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function legacyPasswordOk(player, pass) {
+  if (!player || !player.salt || !player.hash || !crypto?.subtle) return false;
+  const hash = await hashPassword(pass, player.salt);
+  return hash === player.hash;
+}
+
+/* ---------- сессия ---------- */
+function applyAuth(res) {
+  if (!res || !res.ok) return false;
+  localStorage.setItem(TOKEN_KEY, res.token);
+  CURRENT = res.profile;
+  ADMIN_DATA = null;
+  return true;
+}
+
+async function initSession() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) {
+    CURRENT = null;
+    refreshAccountUI();
+    return;
+  }
+  try {
+    const res = await sbRpc('bl_me', { p_token: token });
+    if (res && res.ok) {
+      CURRENT = res.profile;
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      CURRENT = null;
+    }
+  } catch (e) {
+    CURRENT = null;
+    setMsg('База временно недоступна: ' + e.message, 'error');
+  }
+  refreshAccountUI();
 }
 
 /* ---------- раздел аккаунта ---------- */
@@ -225,7 +240,6 @@ function setMsg(text, kind) {
 /* ---------- регистрация / вход ---------- */
 async function doRegister(event) {
   event.preventDefault();
-  if (!crypto?.subtle) return setMsg('Браузер не поддерживает шифрование', 'error');
 
   const nick = (document.getElementById('reg-nick').value || '').trim();
   const pass = document.getElementById('reg-pass').value || '';
@@ -237,24 +251,28 @@ async function doRegister(event) {
   if (pass.length < 4) return setMsg('Пароль должен быть минимум 4 символа', 'error');
   if (pass !== pass2) return setMsg('Пароли не совпадают', 'error');
 
-  const data = pdLoad();
-  if (findPlayerKey(data.players, nick)) return setMsg('Этот ник уже занят', 'error');
+  setMsg('Создаю аккаунт...');
+  let res;
+  try {
+    if (isAdminNick(nick)) {
+      const code = prompt(`Ник «${nick}» зарезервирован.\nВведи код администратора:`, '');
+      if (code === null) return setMsg('Регистрация отменена');
+      if (!code.trim()) return setMsg('Нужен код администратора', 'error');
+      res = await sbRpc('bl_claim_fixed_admin', {
+        p_nick: nick,
+        p_password: pass,
+        p_code: code.trim(),
+      });
+    } else {
+      res = await sbRpc('bl_register', { p_nick: nick, p_password: pass });
+    }
+  } catch (e) {
+    return setMsg('Ошибка базы: ' + e.message, 'error');
+  }
 
-  const salt = randomSalt();
-  const hash = await hashPassword(pass, salt);
-  data.players[nick] = {
-    salt,
-    hash,
-    role: isAdminNick(nick) ? 'admin' : 'player',
-    created: new Date().toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }),
-    lastLogin: '—',
-    banned: false,
-    muted: false,
-  };
-  if (!pdSave(data)) return setMsg('Не удалось сохранить данные (localStorage)', 'error');
+  if (!res || !res.ok) return setMsg((res && res.error) || 'Не удалось создать аккаунт', 'error');
+  if (!applyAuth(res)) return setMsg('База не выдала сессию', 'error');
 
-  localStorage.setItem(SESSION_KEY, nick);
-  adminLog('register', nick, '');
   document.getElementById('form-register').reset();
   setMsg('');
   refreshAccountUI();
@@ -262,37 +280,101 @@ async function doRegister(event) {
 
 async function doLogin(event) {
   event.preventDefault();
-  if (!crypto?.subtle) return setMsg('Браузер не поддерживает шифрование', 'error');
 
   const nick = (document.getElementById('login-nick').value || '').trim();
   const pass = document.getElementById('login-pass').value || '';
   if (!nick || !pass) return setMsg('Введи ник и пароль', 'error');
 
-  const data = pdLoad();
-  const key = findPlayerKey(data.players, nick);
-  if (!key) return setMsg('Аккаунт не найден. Зарегистрируйся.', 'error');
+  setMsg('Проверяю...');
+  let res;
+  try {
+    res = await sbRpc('bl_login', { p_nick: nick, p_password: pass });
 
-  const player = data.players[key];
-  const hash = await hashPassword(pass, player.salt || '');
-  if (hash !== player.hash) return setMsg('Неверный пароль', 'error');
-  if (isBanned(player)) {
-    return setMsg('Аккаунт забанен: ' + (player.banReason || 'без причины'), 'error');
+    // Первый вход после перехода на базу: переносим аккаунт из localStorage.
+    if (!res.ok && res.code === 'not_found') {
+      const legacy = legacyFind(legacyLoad().players, nick);
+      if (legacy && (await legacyPasswordOk(legacy.player, pass))) {
+        if (isAdminNick(legacy.nick)) {
+          return setMsg('Админский ник нужно зарегистрировать заново с кодом администратора', 'error');
+        }
+        res = await sbRpc('bl_register', { p_nick: legacy.nick, p_password: pass });
+        if (!res.ok && res.code === 'taken') {
+          res = await sbRpc('bl_login', { p_nick: legacy.nick, p_password: pass });
+        }
+        if (res.ok) setMsg('Аккаунт перенесён в базу');
+      }
+    }
+  } catch (e) {
+    return setMsg('База недоступна: ' + e.message, 'error');
   }
 
-  player.lastLogin = new Date().toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
-  player.role = isAdminNick(key) ? 'admin' : player.role || 'player';
-  pdSave(data);
+  if (!res || !res.ok) return setMsg((res && res.error) || 'Не удалось войти', 'error');
+  if (!applyAuth(res)) return setMsg('База не выдала сессию', 'error');
 
-  localStorage.setItem(SESSION_KEY, key);
+  localStorage.removeItem(LEGACY_SESSION_KEY);
   document.getElementById('form-login').reset();
   setMsg('');
   refreshAccountUI();
 }
 
-function doLogout() {
-  localStorage.removeItem(SESSION_KEY);
+async function doLogout() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+  CURRENT = null;
+  ADMIN_DATA = null;
   switchTab('login');
   refreshAccountUI();
+  if (token) {
+    try {
+      await sbRpc('bl_logout', { p_token: token });
+    } catch (e) {}
+  }
+}
+
+/* ---------- код для лаунчера ---------- */
+async function makeLauncherCode() {
+  const me = currentPlayer();
+  const status = document.getElementById('launcher-code-status');
+  if (!me) return;
+
+  if (isBanned(me)) {
+    if (status) status.textContent = 'Аккаунт забанен: ' + (me.banReason || 'без причины');
+    return;
+  }
+
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) {
+    if (status) status.textContent = 'Сессия истекла — войди заново';
+    return;
+  }
+
+  if (status) status.textContent = 'Генерация...';
+  try {
+    const res = await sbRpc('bl_create_launcher_code', { p_token: token });
+    if (!res.ok) {
+      if (status) status.textContent = res.error || 'Не удалось получить код';
+      return;
+    }
+    document.getElementById('launcher-code').value = res.code;
+    document.getElementById('launcher-code-result').classList.remove('hidden');
+    if (status) status.textContent = 'Код действует 7 дней. Одноразовый.';
+  } catch (e) {
+    if (status) status.textContent = 'Ошибка базы: ' + e.message;
+  }
+}
+
+async function copyLauncherCode() {
+  const el = document.getElementById('launcher-code');
+  const status = document.getElementById('launcher-code-status');
+  if (!el || !el.value) return;
+  try {
+    await navigator.clipboard.writeText(el.value);
+    if (status) status.textContent = 'Скопировано ✓';
+  } catch (e) {
+    el.select();
+    document.execCommand('copy');
+    if (status) status.textContent = 'Скопировано ✓';
+  }
 }
 
 /* ---------- отрисовка ---------- */
@@ -302,7 +384,7 @@ function refreshAccountUI() {
   const navBtn = document.getElementById('nav-account');
   if (!guest || !user) return;
 
-  const me = currentPlayer();
+  const me = CURRENT;
 
   if (!me) {
     guest.classList.remove('hidden');
@@ -325,112 +407,63 @@ function refreshAccountUI() {
   document.getElementById('profile-nick').textContent = me.nick;
   document.getElementById('profile-role').innerHTML =
     (me.role === 'admin' ? '<span class="role-badge admin">ADMIN</span>' : '<span class="role-badge">PLAYER</span>') +
-    (isBanned(me.player) ? ' <span class="status-badge banned">ЗАБАНЕН</span>' : '') +
-    (isMuted(me.player) ? ' <span class="status-badge muted">МУТ</span>' : '');
+    (isBanned(me) ? ' <span class="status-badge banned">ЗАБАНЕН</span>' : '') +
+    (isMuted(me) ? ' <span class="status-badge muted">МУТ</span>' : '');
 
-  document.getElementById('launcher-code-box').classList.toggle('hidden', isBanned(me.player));
+  document.getElementById('launcher-code-box').classList.toggle('hidden', isBanned(me));
 
   const adminPanel = document.getElementById('admin-panel');
   adminPanel.classList.toggle('hidden', me.role !== 'admin');
 
   let note = '';
-  if (isBanned(me.player)) {
-    note = 'Аккаунт забанен: ' + (me.player.banReason || 'без причины') + '. Вход в лаунчер и получение кода недоступны.';
+  if (isBanned(me)) {
+    note = 'Аккаунт забанен: ' + (me.banReason || 'без причины') + '. Вход в лаунчер и получение кода недоступны.';
   } else if (me.role === 'admin') {
-    note = isMainAdmin(me.nick)
+    note = isMainAdmin(me.nick, me)
       ? 'Ты главный администратор: полный доступ к аккаунтам, банам и мутам.'
       : 'Ты администратор: можешь выдавать роли, банить, мутить и удалять аккаунты.';
-    if (isMuted(me.player)) note += ' На тебе мут.';
+    if (isMuted(me)) note += ' На тебе мут.';
   } else {
-    note = isMuted(me.player) ? 'Ты вошёл как игрок. Действует мут.' : 'Ты вошёл как игрок.';
+    note = isMuted(me) ? 'Ты вошёл как игрок. Действует мут.' : 'Ты вошёл как игрок.';
   }
   document.getElementById('user-note').textContent = note;
 
   if (me.role === 'admin') renderAdmin();
 }
 
-/* ---------- статусы, журнал и админ-действия ---------- */
-function isBanned(player) {
-  return !!(player && player.banned);
-}
-
-function isMuted(player) {
-  return !!(player && player.muted);
-}
-
-function nowStr() {
-  return new Date().toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
-}
-
-const LOG_LABELS = {
-  register: 'зарегистрировался',
-  ban: 'забанил',
-  unban: 'разбанил',
-  mute: 'замутил',
-  unmute: 'размутил',
-  promote: 'выдал админа',
-  demote: 'снял админа',
-  delete: 'удалил',
-};
-
-function adminLog(action, nick, extra) {
-  const data = pdLoad();
-  if (!Array.isArray(data.log)) data.log = [];
-  const me = currentPlayer();
-  data.log.unshift({
-    at: nowStr(),
-    by: me ? me.nick : '—',
-    action,
-    nick: nick || '',
-    extra: extra || '',
-  });
-  data.log = data.log.slice(0, 60);
-  pdSave(data);
-}
-
-function renderAdminLog(data) {
+function renderAdminLog(log) {
   const list = document.getElementById('admin-log-list');
   if (!list) return;
-  const log = Array.isArray(data.log) ? data.log : [];
-  if (!log.length) {
+  const rows = Array.isArray(log) ? log : [];
+  if (!rows.length) {
     list.innerHTML = '<li class="admin-log-empty">Пока пусто.</li>';
     return;
   }
-  list.innerHTML = log
+  list.innerHTML = rows
     .map((e) => {
       const label = LOG_LABELS[e.action] || e.action;
       const target = e.action === 'register' || !e.nick ? '' : ' <b>' + escapeHtml(e.nick) + '</b>';
       const extra = e.extra ? ' <span class="log-extra">(' + escapeHtml(e.extra) + ')</span>' : '';
-      return `<li><span class="log-time">${escapeHtml(e.at)}</span> <b>${escapeHtml(e.by)}</b> ${label}${target}${extra}</li>`;
+      return `<li><span class="log-time">${escapeHtml(e.at || '')}</span> <b>${escapeHtml(e.by || '—')}</b> ${label}${target}${extra}</li>`;
     })
     .join('');
 }
 
-function renderAdmin() {
-  const data = pdLoad();
-  const me = localStorage.getItem(SESSION_KEY) || '';
-  const query = (document.getElementById('admin-search')?.value || '').trim().toLowerCase();
-  const all = Object.keys(data.players);
-  const keys = all
-    .filter((nick) => !query || nick.toLowerCase().includes(query))
-    .sort((a, b) => {
-      const rank = (nick) => (isMainAdmin(nick) ? 0 : roleOf(nick, data.players[nick]) === 'admin' ? 1 : 2);
-      const diff = rank(a) - rank(b);
-      return diff !== 0 ? diff : a.localeCompare(b);
-    });
-
+function renderAdminTable(players) {
   const tbody = document.getElementById('admin-players');
   if (!tbody) return;
+  const me = CURRENT;
+  const rows = Array.isArray(players) ? players : [];
 
-  tbody.innerHTML = keys.length
-    ? keys
-        .map((nick) => {
-          const player = data.players[nick] || {};
-          const role = roleOf(nick, player);
+  tbody.innerHTML = rows.length
+    ? rows
+        .map((player) => {
+          const nick = player.nick;
+          const role = player.role === 'admin' ? 'admin' : 'player';
           const banned = isBanned(player);
           const muted = isMuted(player);
           const isFixed = isAdminNick(nick);
-          const isSelf = nick.toLowerCase() === me.toLowerCase();
+          const isSelf = me && nick.toLowerCase() === me.nick.toLowerCase();
 
           const status = banned
             ? `<span class="status-badge banned" title="${escapeHtml(player.banReason || '')}">ЗАБАНЕН</span>`
@@ -440,7 +473,7 @@ function renderAdmin() {
 
           let actions;
           if (isFixed) {
-            actions = `<span class="auth-note">${isMainAdmin(nick) ? 'главный админ' : 'админ сайта'}</span>`;
+            actions = `<span class="auth-note">${isMainAdmin(nick, player) ? 'главный админ' : 'админ сайта'}</span>`;
           } else if (isSelf) {
             actions = `<span class="auth-note">это ты</span>`;
           } else {
@@ -468,104 +501,113 @@ function renderAdmin() {
         })
         .join('')
     : '<tr><td colspan="6" class="admin-empty">Ничего не найдено.</td></tr>';
+}
 
-  document.getElementById('admin-count').textContent = all.length;
-  document.getElementById('admin-admins').textContent = all.filter((n) => roleOf(n, data.players[n]) === 'admin').length;
-  document.getElementById('admin-bans').textContent = all.filter((n) => isBanned(data.players[n])).length;
-  document.getElementById('admin-mutes').textContent = all.filter((n) => isMuted(data.players[n])).length;
+async function renderAdmin() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token || !CURRENT || CURRENT.role !== 'admin') return;
 
-  renderAdminLog(data);
+  const seq = ++adminSeq;
+  const query = (document.getElementById('admin-search')?.value || '').trim();
+
+  try {
+    const res = await sbRpc('bl_admin_data', { p_token: token, p_search: query });
+    if (seq !== adminSeq) return;
+    if (!res.ok) {
+      const tbody = document.getElementById('admin-players');
+      if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="admin-empty">${escapeHtml(res.error || 'Ошибка базы')}</td></tr>`;
+      return;
+    }
+    ADMIN_DATA = res;
+    renderAdminTable(res.players);
+    const stats = res.stats || {};
+    document.getElementById('admin-count').textContent = stats.total || 0;
+    document.getElementById('admin-admins').textContent = stats.admins || 0;
+    document.getElementById('admin-bans').textContent = stats.bans || 0;
+    document.getElementById('admin-mutes').textContent = stats.mutes || 0;
+    renderAdminLog(res.log);
+  } catch (e) {
+    if (seq !== adminSeq) return;
+    const tbody = document.getElementById('admin-players');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="admin-empty">База недоступна: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function scheduleAdminRender() {
+  clearTimeout(adminDebounce);
+  adminDebounce = setTimeout(renderAdmin, 250);
 }
 
 function adminCanAct() {
-  const me = currentPlayer();
-  return me && me.role === 'admin' ? me : null;
+  return CURRENT && CURRENT.role === 'admin' ? CURRENT : null;
 }
 
-function adminToggleBan(nick) {
-  const me = adminCanAct();
-  if (!me) return;
-  const data = pdLoad();
-  const key = findPlayerKey(data.players, nick);
-  if (!key || isAdminNick(key) || key.toLowerCase() === me.nick.toLowerCase()) return;
-  const player = data.players[key];
+function adminFind(nick) {
+  const players = (ADMIN_DATA && ADMIN_DATA.players) || [];
+  return players.find((p) => p.nick.toLowerCase() === String(nick || '').toLowerCase()) || null;
+}
 
-  if (isBanned(player)) {
-    player.banned = false;
-    delete player.banReason;
-    delete player.bannedAt;
-    delete player.bannedBy;
-    pdSave(data);
-    adminLog('unban', key, '');
-  } else {
-    const reason = prompt(`Причина бана для «${key}» (необязательно):`, '');
-    if (reason === null) return;
-    player.banned = true;
-    player.banReason = reason.trim() || 'без причины';
-    player.bannedAt = nowStr();
-    player.bannedBy = me.nick;
-    pdSave(data);
-    adminLog('ban', key, player.banReason);
-    if (localStorage.getItem(SESSION_KEY) === key) localStorage.removeItem(SESSION_KEY);
+async function adminRun(action, nick, extra) {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) return false;
+  try {
+    const res = await sbRpc('bl_admin_action', {
+      p_token: token,
+      p_action: action,
+      p_target: nick,
+      p_extra: extra || '',
+    });
+    if (!res.ok) {
+      alert(res.error || 'Ошибка действия');
+      return false;
+    }
+    await renderAdmin();
+    return true;
+  } catch (e) {
+    alert('База недоступна: ' + e.message);
+    return false;
   }
-  refreshAccountUI();
 }
 
-function adminToggleMute(nick) {
+async function adminToggleBan(nick) {
   const me = adminCanAct();
-  if (!me) return;
-  const data = pdLoad();
-  const key = findPlayerKey(data.players, nick);
-  if (!key || isAdminNick(key) || key.toLowerCase() === me.nick.toLowerCase()) return;
-  const player = data.players[key];
-
-  if (isMuted(player)) {
-    player.muted = false;
-    delete player.muteReason;
-    delete player.mutedAt;
-    delete player.mutedBy;
-    pdSave(data);
-    adminLog('unmute', key, '');
-  } else {
-    const reason = prompt(`Причина мута для «${key}» (необязательно):`, '');
-    if (reason === null) return;
-    player.muted = true;
-    player.muteReason = reason.trim() || 'без причины';
-    player.mutedAt = nowStr();
-    player.mutedBy = me.nick;
-    pdSave(data);
-    adminLog('mute', key, player.muteReason);
+  if (!me || isAdminNick(nick) || nick.toLowerCase() === me.nick.toLowerCase()) return;
+  const row = adminFind(nick);
+  if (row && row.banned) {
+    await adminRun('unban', nick, '');
+    return;
   }
-  refreshAccountUI();
+  const reason = prompt(`Причина бана для «${nick}» (необязательно):`, '');
+  if (reason === null) return;
+  await adminRun('ban', nick, reason.trim());
 }
 
-function adminToggleRole(nick) {
+async function adminToggleMute(nick) {
   const me = adminCanAct();
-  if (!me) return;
-  const data = pdLoad();
-  const key = findPlayerKey(data.players, nick);
-  if (!key || isAdminNick(key)) return;
-  const makeAdmin = roleOf(key, data.players[key]) !== 'admin';
-  data.players[key].role = makeAdmin ? 'admin' : 'player';
-  pdSave(data);
-  adminLog(makeAdmin ? 'promote' : 'demote', key, '');
-  refreshAccountUI();
+  if (!me || isAdminNick(nick) || nick.toLowerCase() === me.nick.toLowerCase()) return;
+  const row = adminFind(nick);
+  if (row && row.muted) {
+    await adminRun('unmute', nick, '');
+    return;
+  }
+  const reason = prompt(`Причина мута для «${nick}» (необязательно):`, '');
+  if (reason === null) return;
+  await adminRun('mute', nick, reason.trim());
 }
 
-function adminDelete(nick) {
+async function adminToggleRole(nick) {
   const me = adminCanAct();
-  if (!me) return;
-  if (isAdminNick(nick)) return;
+  if (!me || isAdminNick(nick)) return;
+  const row = adminFind(nick);
+  const makeAdmin = !(row && row.role === 'admin');
+  await adminRun(makeAdmin ? 'promote' : 'demote', nick, '');
+}
+
+async function adminDelete(nick) {
+  const me = adminCanAct();
+  if (!me || isAdminNick(nick)) return;
   if (!confirm(`Удалить аккаунт «${nick}»?`)) return;
-
-  const data = pdLoad();
-  const key = findPlayerKey(data.players, nick);
-  if (!key) return;
-  delete data.players[key];
-  pdSave(data);
-  adminLog('delete', key, '');
-  if (localStorage.getItem(SESSION_KEY) === key) localStorage.removeItem(SESSION_KEY);
-  refreshAccountUI();
+  await adminRun('delete', nick, '');
 }
 
 /* ---------- инициализация ---------- */
@@ -573,5 +615,4 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeAccount();
 });
 
-document.addEventListener('DOMContentLoaded', refreshAccountUI);
-refreshAccountUI();
+initSession();

@@ -78,38 +78,57 @@ pip install pillow numpy
 python tools/build_menu_pack.py
 ```
 
-## Вход через сайт
+## Аккаунты и вход через сайт
 
-Аккаунты создаются на сайте BritonLauncher (раздел «Аккаунт»). Пароли хранятся в браузере
-в виде соли и SHA-256, на сервер ничего не отправляется — это клиентские аккаунты сайта.
+Аккаунты хранятся в Supabase (Postgres) и общие для сайта и лаунчера: роли, баны и муты
+действуют везде. Пароли хешируются на сервере bcrypt (`pgcrypto`), браузер получает только
+токен сессии, а в базе лежит SHA-256 от этого токена.
 
 1. Открой сайт → «Аккаунт» → зарегистрируйся или войди.
 2. Нажми **«Получить код для лаунчера»** и скопируй код.
 3. В лаунчере нажми **«Войти по коду»**, вставь код и войди.
 
-Код подписан HMAC-SHA256 и действует 7 дней. Роль (игрок / админ / главный админ)
-определяется по нику и подписи. Управление аккаунтами доступно администраторам
-в разделе «Админка» лаунчера (открывает админ-панель сайта).
+Код формата `BLS2.<...>` одноразовый и действует 7 дней; в базе хранится только его хеш.
+При запуске игры лаунчер проверяет статус аккаунта: забаненный игрок игру не запустит.
 
-> Важно: это клиентская схема без сервера. Секрет подписи и база аккаунтов находятся
-> в браузере/исходниках, поэтому защита рассчитана на честных пользователей, а не на
-> злоумышленника с доступом к файлам. Для настоящей авторизации нужен сервер (Supabase и т.п.).
+Старые аккаунты из `localStorage` переносятся автоматически при первом успешном входе,
+если пароль совпал с локальным хешем.
 
 ## Админ-панель сайта
 
 Открывается в разделе «Аккаунт» для администраторов:
 
 - **Поиск** по нику и таблица аккаунтов: роль, статус, дата создания и последнего входа.
-- **Баны** — забаненный аккаунт не может войти на сайт и получить код для лаунчера.
-- **Муты** — аккаунт помечается как «МУТ» на сайте и в лаунчере после входа по коду.
+- **Баны** — забаненный аккаунт не может войти на сайт, получить код и запустить игру.
+- **Муты** — аккаунт помечается как «МУТ» на сайте и в лаунчере.
 - **Роли** — выдача и снятие администратора, удаление аккаунтов.
 - **Журнал действий** — последние 60 операций (кто, кого, когда и причина).
 - **Защита** — `KostyaKosmos` и `BritonLauncher` нельзя забанить, замутить, разжаловать
   или удалить; себя забанить тоже нельзя.
 
-> Мут — это флаг аккаунта и пометка в интерфейсе. Он не может блокировать чат внутри
-> Minecraft: для этого нужен сервер с плагином. Бан на сайте реален — вход и выдача кода
-> блокируются, но уже выданный ранее код действует до истечения 7 дней.
+> Мут — это флаг аккаунта и пометка в интерфейсе. Он не блокирует чат внутри Minecraft:
+> для этого нужен сервер с плагином. Бан блокирует вход, выдачу кода и запуск игры.
+
+## Supabase
+
+Проект: `https://lmjizrowtxuwlovbirge.supabase.co`. В `docs/script.js` и `main.py` вшит
+публичный publishable-ключ — это нормально, он предназначен для клиента.
+
+Схема лежит в `supabase/schema.sql` и применяется вручную:
+
+1. Открой Supabase → **SQL Editor** → **New query**.
+2. Вставь содержимое файла и нажми **Run**. Повторный запуск безопасен.
+
+Что создаётся:
+
+- таблицы `profiles`, `sessions`, `launcher_codes`, `action_log`, `setup_codes`;
+- RPC `bl_register`, `bl_claim_fixed_admin`, `bl_login`, `bl_me`, `bl_logout`,
+  `bl_create_launcher_code`, `bl_redeem_launcher_code`, `bl_account_status`,
+  `bl_admin_data`, `bl_admin_action`;
+- RLS и `REVOKE`: таблицы недоступны напрямую, только через `SECURITY DEFINER`-функции.
+
+Одноразовые коды для фиксированных админов зашиты в `schema.sql` только хешами.
+Пароль задаётся при регистрации через `bl_claim_fixed_admin` — сайт спросит код.
 
 ## Где хранятся данные
 
@@ -125,8 +144,8 @@ python tools/build_menu_pack.py
 └── custom_menu\index.html
 ```
 
-Аккаунты сайта хранятся в браузере (`localStorage`), а в лаунчере — только ник и роль
-в `config.json`. Пароли на сайт не передаются: хранится соль и SHA-256.
+Аккаунты сайта хранятся в Supabase. В браузере остаётся только токен сессии
+(`localStorage: britonlauncher.token`), в `config.json` лаунчера — ник, роль и время входа.
 
 ## Структура проекта
 
@@ -134,6 +153,7 @@ python tools/build_menu_pack.py
 main.py               лаунчер (GUI + логика + вход по коду с сайта)
 assets/BritonMenu.zip брендовый ресурспак для меню Minecraft
 tools/build_menu_pack.py  генератор ресурспака
+supabase/schema.sql   схема базы: таблицы, RPC, RLS
 requirements.txt      зависимости Python
 build_exe.bat         сборка .exe
 run.bat               быстрый запуск из исходников
@@ -152,13 +172,13 @@ docs/                 сайт для GitHub Pages
 
 - Лаунчер не обходит и не отключает аутентификацию, проверку владения игрой или лицензионные проверки.
 - Для игры в online-режиме нужен официальный аккаунт Minecraft.
-- Пароли сайта не передаются в лаунчер: он получает только ник и роль по подписанному коду.
+- Пароли сайта не передаются в лаунчер: он получает только ник и роль после обмена одноразового кода.
 
 ### English summary
 
-BritonLauncher is a free custom Minecraft launcher for Windows. Accounts are created on the
-project website (browser-local, salted SHA-256 passwords). The launcher accepts a signed
-HMAC code from the website to learn the nickname and role (player/admin), then launches the
-game offline by nickname. It can also install official game versions, Fabric/Forge loaders,
-and download mods/resource packs/shaders from Modrinth. It does not bypass authentication,
-ownership or license checks.
+BritonLauncher is a free custom Minecraft launcher for Windows. Accounts live in Supabase
+(shared by the website and launcher; bcrypt password hashes, session tokens stored as SHA-256).
+The launcher accepts a one-time `BLS2` code from the website to learn the nickname, role and
+status, then launches the game offline by nickname. It can also install official game versions,
+Fabric/Forge loaders, and download mods/resource packs/shaders from Modrinth. It does not bypass
+authentication, ownership or license checks.

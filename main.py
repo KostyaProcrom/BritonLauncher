@@ -18,12 +18,14 @@ import webbrowser
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
 
-CURRENT_VERSION = "3.9.0"
+CURRENT_VERSION = "3.10.0"
 GITHUB_REPO = "KostyaProcrom/BritonLauncher"
 UPDATE_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 SITE_URL = "https://kostyaprocrom.github.io/BritonLauncher/"
 LAUNCHER_SECRET = "577b977f8870b4a173026dc3ca5962300ad353f38cb0a4ba9464b41f4daba6b3"
+SUPABASE_URL = "https://lmjizrowtxuwlovbirge.supabase.co"
+SUPABASE_KEY = "sb_publishable_R4FofdxSpJhuzDvahy1gKw_Q1Dfmbob"
 CODE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 ADMIN_NICKS = {"kostyakosmos": "main", "britonlauncher": "admin"}
 
@@ -230,6 +232,64 @@ def _b64url_encode(data):
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
 
+def supabase_rpc(name, params=None, timeout=20):
+    """Вызывает RPC-функцию Supabase публичным ключом."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise RuntimeError("Supabase не настроен")
+    resp = SESSION.post(
+        f"{SUPABASE_URL}/rest/v1/rpc/{name}",
+        json=params or {},
+        headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        timeout=timeout,
+    )
+    try:
+        data = resp.json()
+    except Exception:
+        data = None
+    if resp.status_code >= 400:
+        msg = ""
+        if isinstance(data, dict):
+            msg = data.get("message") or data.get("hint") or data.get("error") or ""
+        raise RuntimeError(msg or f"База ответила {resp.status_code}")
+    if not isinstance(data, dict):
+        raise RuntimeError("Неожиданный ответ базы")
+    return data
+
+
+def fetch_account_status(nick):
+    """Актуальный статус аккаунта из базы или None, если база недоступна."""
+    nick = (nick or "").strip()
+    if not nick:
+        return None
+    try:
+        res = supabase_rpc("bl_account_status", {"p_nick": nick}, timeout=12)
+    except Exception:
+        return None
+    return res if res.get("ok") else None
+
+
+_site_status_cache = {"nick": "", "at": 0.0, "data": None}
+
+
+def cached_account_status(nick, max_age=60):
+    """Статус аккаунта с кэшем на минуту, чтобы не дёргать базу на каждый клик."""
+    nick = (nick or "").strip()
+    if not nick:
+        return None
+    now = time.time()
+    cache = _site_status_cache
+    if cache["nick"] == nick and now - cache["at"] < max_age:
+        return cache["data"]
+    data = fetch_account_status(nick)
+    cache.update({"nick": nick, "at": now, "data": data})
+    return data
+
+
 def _b64url_decode(text):
     text = (text or "").strip()
     pad = "=" * (-len(text) % 4)
@@ -276,6 +336,39 @@ def verify_launcher_code(code):
         "main": fixed == "main",
         "muted": bool(payload.get("mu")),
         "login_at": time.strftime("%d.%m.%Y %H:%M"),
+    }
+
+
+def redeem_launcher_code(code):
+    """Погашает одноразовый код BLS2 из базы и возвращает аккаунт."""
+    code = (code or "").strip().replace("\n", "").replace("\r", "")
+    if not code.startswith("BLS2."):
+        raise ValueError("Неверный формат кода")
+    try:
+        res = supabase_rpc("bl_redeem_launcher_code", {"p_code": code}, timeout=25)
+    except Exception as e:
+        raise RuntimeError(f"База недоступна: {e}")
+
+    if not res.get("ok"):
+        msg = res.get("error") or "Код не принят"
+        if res.get("code") == "banned":
+            raise PermissionError(msg)
+        raise ValueError(msg)
+
+    profile = res.get("profile") or {}
+    nick = str(profile.get("nick") or "").strip()
+    if not re.match(r"^[A-Za-z0-9_]{3,16}$", nick):
+        raise ValueError("База вернула некорректный ник")
+
+    return {
+        "nick": nick,
+        "role": "admin" if profile.get("role") == "admin" else "player",
+        "main": bool(profile.get("main")),
+        "muted": bool(profile.get("muted")),
+        "banned": bool(profile.get("banned")),
+        "ban_reason": profile.get("banReason") or "",
+        "login_at": time.strftime("%d.%m.%Y %H:%M"),
+        "source": "supabase",
     }
 
 
@@ -512,12 +605,26 @@ class Api:
             acc = dict(config.get("site_account") or {})
         if not acc.get("nick"):
             return {"logged_in": False, "site_url": SITE_URL}
+
+        status = cached_account_status(acc["nick"])
+        if status:
+            acc["role"] = "admin" if status.get("role") == "admin" else "player"
+            acc["main"] = bool(status.get("main"))
+            acc["muted"] = bool(status.get("muted"))
+            acc["banned"] = bool(status.get("banned"))
+            acc["ban_reason"] = status.get("banReason") or ""
+            with _cfg_lock:
+                config["site_account"] = dict(acc)
+                save_config(config)
+
         return {
             "logged_in": True,
             "nick": acc.get("nick", ""),
             "role": acc.get("role", "player"),
             "main": bool(acc.get("main")),
             "muted": bool(acc.get("muted")),
+            "banned": bool(acc.get("banned")),
+            "ban_reason": acc.get("ban_reason", ""),
             "login_at": acc.get("login_at", ""),
             "site_url": SITE_URL,
         }
@@ -530,16 +637,35 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     def site_login(self, code):
+        code = (code or "").strip()
         try:
-            acc = verify_launcher_code(code)
+            if code.startswith("BLS2."):
+                acc = redeem_launcher_code(code)
+            else:
+                acc = verify_launcher_code(code)
+                status = fetch_account_status(acc["nick"])
+                if status:
+                    if status.get("banned"):
+                        raise PermissionError(
+                            "Аккаунт забанен: " + (status.get("banReason") or "без причины")
+                        )
+                    acc["role"] = "admin" if status.get("role") == "admin" else "player"
+                    acc["main"] = bool(status.get("main"))
+                    acc["muted"] = bool(status.get("muted"))
+                    acc["banned"] = False
+                    acc["ban_reason"] = ""
+        except PermissionError as e:
+            return {"ok": False, "error": str(e)}
         except ValueError as e:
             return {"ok": False, "error": str(e)}
         except Exception as e:
             return {"ok": False, "error": f"Не удалось прочитать код: {e}"}
+
         with _cfg_lock:
             config["site_account"] = acc
             config["nickname"] = acc["nick"]
             save_config(config)
+        _site_status_cache.update({"nick": acc["nick"], "at": time.time(), "data": None})
         save_nickname(acc["nick"])
         self._set_status(f"Вход через сайт: {acc['nick']}", "#22c55e", "✅")
         return {"ok": True, **acc}
@@ -759,6 +885,17 @@ class Api:
     def _launch_bg(self, nickname, version, loader_choice, ram, show_console, server_ip=None):
         try:
             self._safe_eval("setPlayBusy(true);")
+
+            with _cfg_lock:
+                site_nick = (config.get("site_account") or {}).get("nick") or ""
+            if site_nick:
+                status = fetch_account_status(site_nick)
+                if status and status.get("banned"):
+                    reason = status.get("banReason") or "без причины"
+                    self._set_status(f"Аккаунт забанен: {reason}", "#ef4444", "🚫")
+                    self._safe_eval("setPlayBusy(false);")
+                    return
+
             self._set_status(f"Проверка и установка {version}...", "#f59e0b", "⏳")
 
             minecraft_launcher_lib.install.install_minecraft_version(version, BASE_DIR)
@@ -929,7 +1066,7 @@ html, body { height: 100%; background: var(--body-bg); color: var(--text); font-
 .ico { display: inline-block; width: 20px; height: 20px; vertical-align: middle; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 #titlebar { height: 56px; display: flex; align-items: center; padding: 0 8px 0 18px; background: var(--glass); backdrop-filter: blur(14px); border-bottom: 1px solid var(--glass-border); }
 .brand { display: flex; align-items: center; gap: 10px; }
-.brand-logo { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, var(--grad-1), var(--grad-2)); display: grid; place-items: center; font-weight: 800; font-size: 17px; color: white; box-shadow: 0 6px 22px var(--accent-soft); }
+.brand-logo { width: 34px; height: 34px; border-radius: 10px; background: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDEyOCAxMjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzFlMjkzYiIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMwZjE3MmEiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImdyYXNzIiB4MT0iMCIgeTE9IjAiIHgyPSIwIiB5Mj0iMSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzVkOWIzZiIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM0YTdlMzIiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImRpcnQiIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjOGI1YTJiIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzZiM2UxYSIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZ29sZCIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmYmJmMjQiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZDk3NzA2Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cmVjdCB4PSI2IiB5PSI2IiB3aWR0aD0iMTE2IiBoZWlnaHQ9IjExNiIgcng9IjI4IiBmaWxsPSJ1cmwoI2JnKSIgc3Ryb2tlPSIjYzVhMDU5IiBzdHJva2Utd2lkdGg9IjMiLz4KICA8Zz4KICAgIDxyZWN0IHg9IjM0IiB5PSIzNCIgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSJ1cmwoI2RpcnQpIiBzdHJva2U9IiM1ZDQwMzciIHN0cm9rZS13aWR0aD0iMyIvPgogICAgPHJlY3QgeD0iMzQiIHk9IjM0IiB3aWR0aD0iNjAiIGhlaWdodD0iMTQiIGZpbGw9InVybCgjZ3Jhc3MpIiBzdHJva2U9IiMzZTZiMjEiIHN0cm9rZS13aWR0aD0iMyIvPgogICAgPHJlY3QgeD0iNDIiIHk9IjQ4IiB3aWR0aD0iOCIgaGVpZ2h0PSI4IiBmaWxsPSIjM2U2YjIxIi8+CiAgICA8cmVjdCB4PSI1OCIgeT0iNDgiIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiMzZTZiMjEiLz4KICAgIDxyZWN0IHg9Ijc0IiB5PSI0OCIgd2lkdGg9IjgiIGhlaWdodD0iOCIgZmlsbD0iIzNlNmIyMSIvPgogIDwvZz4KICA8ZyBmaWxsPSJ1cmwoI2dvbGQpIiBzdHJva2U9IiNiNDUzMDkiIHN0cm9rZS13aWR0aD0iMi41IiBzdHJva2UtbGluZWpvaW49InJvdW5kIj4KICAgIDxwYXRoIGQ9Ik01MiA2OCBMNjQgNTYgTDcwIDUwIEw3NiA1NiBMODIgNjggTDc5IDgyIEw3MCA5MCBMNTggOTAgTDQ5IDgyIFoiLz4KICAgIDxsaW5lIHgxPSI2NCIgeTE9IjU2IiB4Mj0iNzkiIHkyPSI2OCIgc3Ryb2tlPSIjYjQ1MzA5IiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDwvZz4KPC9zdmc+") center/cover no-repeat; display: grid; place-items: center; box-shadow: 0 6px 22px var(--accent-soft); }
 .brand-name { font-weight: 700; font-size: 15px; }
 .brand-ver { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 4px; }
 .title-account { margin-left: auto; margin-right: 8px; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: var(--accent-soft); border: 1px solid var(--glass-border); color: var(--text); font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; transition: all 0.15s; }
@@ -1040,7 +1177,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 
 #app { display: flex; height: 100vh; overflow: hidden; }
 .rail { width: 64px; flex: 0 0 64px; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 0 10px; background: #0b0e13; border-right: 1px solid var(--line); }
-.rail-logo { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, #22c55e, #0f7a3a); display: grid; place-items: center; font-weight: 900; font-size: 16px; color: #fff; box-shadow: 0 6px 18px rgba(34,197,94,0.28); margin-bottom: 6px; flex-shrink: 0; }
+.rail-logo { width: 34px; height: 34px; border-radius: 10px; background: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDEyOCAxMjgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzFlMjkzYiIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMwZjE3MmEiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImdyYXNzIiB4MT0iMCIgeTE9IjAiIHgyPSIwIiB5Mj0iMSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzVkOWIzZiIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM0YTdlMzIiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImRpcnQiIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjOGI1YTJiIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzZiM2UxYSIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iZ29sZCIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiNmYmJmMjQiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZDk3NzA2Ii8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8cmVjdCB4PSI2IiB5PSI2IiB3aWR0aD0iMTE2IiBoZWlnaHQ9IjExNiIgcng9IjI4IiBmaWxsPSJ1cmwoI2JnKSIgc3Ryb2tlPSIjYzVhMDU5IiBzdHJva2Utd2lkdGg9IjMiLz4KICA8Zz4KICAgIDxyZWN0IHg9IjM0IiB5PSIzNCIgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSJ1cmwoI2RpcnQpIiBzdHJva2U9IiM1ZDQwMzciIHN0cm9rZS13aWR0aD0iMyIvPgogICAgPHJlY3QgeD0iMzQiIHk9IjM0IiB3aWR0aD0iNjAiIGhlaWdodD0iMTQiIGZpbGw9InVybCgjZ3Jhc3MpIiBzdHJva2U9IiMzZTZiMjEiIHN0cm9rZS13aWR0aD0iMyIvPgogICAgPHJlY3QgeD0iNDIiIHk9IjQ4IiB3aWR0aD0iOCIgaGVpZ2h0PSI4IiBmaWxsPSIjM2U2YjIxIi8+CiAgICA8cmVjdCB4PSI1OCIgeT0iNDgiIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiMzZTZiMjEiLz4KICAgIDxyZWN0IHg9Ijc0IiB5PSI0OCIgd2lkdGg9IjgiIGhlaWdodD0iOCIgZmlsbD0iIzNlNmIyMSIvPgogIDwvZz4KICA8ZyBmaWxsPSJ1cmwoI2dvbGQpIiBzdHJva2U9IiNiNDUzMDkiIHN0cm9rZS13aWR0aD0iMi41IiBzdHJva2UtbGluZWpvaW49InJvdW5kIj4KICAgIDxwYXRoIGQ9Ik01MiA2OCBMNjQgNTYgTDcwIDUwIEw3NiA1NiBMODIgNjggTDc5IDgyIEw3MCA5MCBMNTggOTAgTDQ5IDgyIFoiLz4KICAgIDxsaW5lIHgxPSI2NCIgeTE9IjU2IiB4Mj0iNzkiIHkyPSI2OCIgc3Ryb2tlPSIjYjQ1MzA5IiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDwvZz4KPC9zdmc+") center/cover no-repeat; display: grid; place-items: center; box-shadow: 0 6px 18px rgba(34,197,94,0.22); margin-bottom: 6px; flex-shrink: 0; }
 .rail-sep { width: 26px; height: 1px; background: var(--line); margin: 4px 0; flex-shrink: 0; }
 .rail-item { width: 42px; height: 42px; border: none; border-radius: 12px; background: transparent; color: #6e7688; display: grid; place-items: center; cursor: pointer; transition: all 0.15s; position: relative; flex-shrink: 0; }
 .rail-item .ico { width: 20px; height: 20px; }
@@ -1169,6 +1306,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .lp-news-head .link { background: none; border: none; color: var(--text-dim); font-size: 10.5px; font-weight: 700; cursor: pointer; font-family: inherit; }
 .lp-news-head .link:hover { color: var(--text); }
 .news-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.lp-footer { margin-top: 4px; padding: 10px 0 2px; text-align: center; font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px; color: var(--text-mute); }
 .news-card { position: relative; height: 168px; border-radius: 15px; overflow: hidden; border: 1px solid var(--line); cursor: pointer; background: #0d1017; text-align: left; font-family: inherit; color: #fff; transition: transform 0.15s, border-color 0.15s; padding: 0; animation: fadeUp 0.34s ease both; }
 .news-card:nth-child(2) { animation-delay: 0.06s; }
 .news-card:hover { transform: translateY(-2px); border-color: #2b3340; }
@@ -1212,7 +1350,7 @@ input, select { background: #0c0f15; border-color: var(--line); border-radius: 1
 
 <div id="app">
   <aside class="rail">
-    <div class="rail-logo">B</div>
+    <div class="rail-logo" role="img" aria-label="BritonLauncher"></div>
     <button class="rail-item active" data-page="launch" onclick="showPage('launch')" title="Launchpad">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
     </button>
@@ -1236,14 +1374,14 @@ input, select { background: #0c0f15; border-color: var(--line); border-radius: 1
       <button class="rail-item" data-page="settings" onclick="showPage('settings')" title="Настройки">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
-      <div class="rail-ver">v3.9</div>
+      <div class="rail-ver">v3.10</div>
     </div>
   </aside>
 
   <div class="main">
     <div id="titlebar" class="pywebview-drag-region">
       <div class="tb-brand">
-        <div class="brand-logo">B</div>
+        <div class="brand-logo" role="img" aria-label="BritonLauncher"></div>
         <span class="name">BritonLauncher</span>
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
@@ -1253,7 +1391,7 @@ input, select { background: #0c0f15; border-color: var(--line); border-radius: 1
         <span class="tb-crumb" id="tb-crumb">Launchpad</span>
       </div>
       <div class="tb-right">
-        <span class="tb-version">v3.9.0</span>
+        <span class="tb-version">v3.10.0</span>
         <button class="tb-icon" onclick="focusSearch()" title="Поиск модов">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
@@ -1405,8 +1543,10 @@ async function refreshAccount() {
       + '<div class="acct-ava">' + escapeHtml(acc.nick.charAt(0).toUpperCase()) + '</div>'
       + '<div><div class="acct-name">' + escapeHtml(acc.nick)
       + '<span class="badge role">' + roleLabel(acc) + '</span>'
-      + (acc.muted ? '<span class="badge mute">МУТ</span>' : '') + '</div>'
-      + '<div class="acct-meta">Вход через сайт · ' + escapeHtml(acc.login_at || '—') + '</div></div>'
+      + (acc.banned ? '<span class="badge mute">БАН</span>' : (acc.muted ? '<span class="badge mute">МУТ</span>' : '')) + '</div>'
+      + '<div class="acct-meta">' + (acc.banned
+          ? 'Забанен: ' + escapeHtml(acc.ban_reason || 'без причины')
+          : 'Вход через сайт · ' + escapeHtml(acc.login_at || '—')) + '</div></div>'
       + '</div>'
       + '<div class="acct-actions">'
       + (acc.role === 'admin' ? '<button class="btn" onclick="goAdmin()">Админка</button>' : '')
@@ -1468,14 +1608,14 @@ async function renderAdminPage() {
     <div class="admin-card">
       <div class="admin-row"><span>Ник</span><b>${escapeHtml(acc.nick)}</b></div>
       <div class="admin-row"><span>Роль</span><b>${acc.main ? 'Главный администратор' : 'Администратор'}</b></div>
-      <div class="admin-row"><span>Статус</span><b>${acc.muted ? 'Мут' : 'Активен'}</b></div>
+      <div class="admin-row"><span>Статус</span><b>${acc.banned ? 'Забанен: ' + escapeHtml(acc.ban_reason || 'без причины') : (acc.muted ? 'Мут' : 'Активен')}</b></div>
       <div class="admin-row"><span>Вход</span><b>${escapeHtml(acc.login_at || '—')}</b></div>
     </div>
     <div class="admin-actions">
       <button class="btn primary" onclick="openSiteAdmin()">Открыть админ-панель на сайте</button>
       <button class="btn" onclick="siteLogout()">Выйти</button>
     </div>
-    <div class="page-status">Аккаунты хранятся в браузере на сайте. Управление игроками — там же, в разделе «Аккаунт».</div>`;
+    <div class="page-status">Аккаунты хранятся в общей базе и действуют на сайте и в лаунчере. Управление игроками — на сайте, в разделе «Аккаунт».</div>`;
 }
 
 async function openSiteAdmin() {
@@ -1698,7 +1838,7 @@ async function renderLaunch() {
               <span class="launch-sub">BritonLauncher <b id="launch-version">${escapeHtml(state.version)}</b><span class="sep">•</span><span id="launch-loader">${escapeHtml(state.loader)}</span></span>
             </button>
           </div>
-          <div class="hero-note">v3.9.0 · BritonLauncher</div>
+          <div class="hero-note">v3.10.0 · BritonLauncher</div>
           <button class="hero-gear" onclick="toggleLaunchConfig()" title="Настройки запуска">
             <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
@@ -1735,10 +1875,10 @@ async function renderLaunch() {
         <div class="news-grid">
           <button class="news-card green" onclick="openReleases()">
             <div class="news-cover">
-              <span class="news-big">3.9</span>
+              <span class="news-big">3.10</span>
               <span class="news-tag">Обновление лаунчера</span>
-              <span class="news-title">Новый Launchpad</span>
-              <span class="news-desc">Аккаунт, сервер и запуск игры в одном окне.</span>
+              <span class="news-title">Аккаунты в Supabase</span>
+              <span class="news-desc">Единый вход с сайтом, роли, баны и муты.</span>
               <span class="news-arrow"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg></span>
             </div>
           </button>
@@ -1752,6 +1892,7 @@ async function renderLaunch() {
             </div>
           </button>
         </div>
+        <div class="lp-footer">© KosmosStudio - 2026</div>
       </div>
 
       <div class="lp-side">
@@ -1890,7 +2031,7 @@ async function renderSettings() {
 
   document.getElementById('content').innerHTML = `
     <div class="page-title"><span class="grad">Настройки</span></div>
-    <div class="page-sub">BritonLauncher v3.9.0</div>
+    <div class="page-sub">BritonLauncher v3.10.0</div>
 
     <div class="settings-section" style="margin-bottom:14px;">
       <h3>Тема оформления</h3>
@@ -2035,7 +2176,7 @@ if __name__ == "__main__":
         pass
     api = Api()
     window = webview.create_window(
-        "BritonLauncher v3.9.0",
+        "BritonLauncher v3.10.0",
         html=HTML,
         js_api=api,
         width=1280,
