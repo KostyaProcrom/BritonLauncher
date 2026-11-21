@@ -7,9 +7,6 @@ import sys
 import shutil
 import json
 import re
-import base64
-import hmac
-import hashlib
 import time
 import requests
 import nbtlib
@@ -18,16 +15,13 @@ import webbrowser
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
 
-CURRENT_VERSION = "3.10.0"
+CURRENT_VERSION = "3.10.1"
 GITHUB_REPO = "KostyaProcrom/BritonLauncher"
 UPDATE_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 SITE_URL = "https://kostyaprocrom.github.io/BritonLauncher/"
-LAUNCHER_SECRET = "577b977f8870b4a173026dc3ca5962300ad353f38cb0a4ba9464b41f4daba6b3"
 SUPABASE_URL = "https://lmjizrowtxuwlovbirge.supabase.co"
 SUPABASE_KEY = "sb_publishable_R4FofdxSpJhuzDvahy1gKw_Q1Dfmbob"
-CODE_TTL_MS = 7 * 24 * 60 * 60 * 1000
-ADMIN_NICKS = {"kostyakosmos": "main", "britonlauncher": "admin"}
 
 DEFAULT_REDIRECT = "https://login.microsoftonline.com/common/oauth2/nativeclient"
 
@@ -228,10 +222,6 @@ def sanitize_ram(ram):
 
 
 # ==================== ВХОД ЧЕРЕЗ САЙТ ====================
-def _b64url_encode(data):
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-
 def supabase_rpc(name, params=None, timeout=20):
     """Вызывает RPC-функцию Supabase публичным ключом."""
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -290,55 +280,6 @@ def cached_account_status(nick, max_age=60):
     return data
 
 
-def _b64url_decode(text):
-    text = (text or "").strip()
-    pad = "=" * (-len(text) % 4)
-    return base64.urlsafe_b64decode(text + pad)
-
-
-def verify_launcher_code(code):
-    """Проверяет код с сайта и возвращает данные аккаунта.
-
-    Формат: BLS1.<base64url(json)>.<base64url(HMAC-SHA256)>
-    """
-    code = (code or "").strip().replace("\n", "").replace("\r", "")
-    parts = code.split(".")
-    if len(parts) != 3 or parts[0] != "BLS1":
-        raise ValueError("Неверный формат кода")
-
-    payload_b64, sig_b64 = parts[1], parts[2]
-    expected = hmac.new(
-        LAUNCHER_SECRET.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256
-    ).digest()
-    if not hmac.compare_digest(_b64url_encode(expected), sig_b64):
-        raise ValueError("Подпись кода не совпадает")
-
-    try:
-        payload = json.loads(_b64url_decode(payload_b64).decode("utf-8"))
-    except Exception:
-        raise ValueError("Код повреждён")
-
-    nick = str(payload.get("n", "")).strip()
-    if not re.match(r"^[A-Za-z0-9_]{3,16}$", nick):
-        raise ValueError("Некорректный ник в коде")
-
-    issued = int(payload.get("t", 0) or 0)
-    if issued <= 0 or int(time.time() * 1000) - issued > CODE_TTL_MS:
-        raise ValueError("Код устарел — получи новый на сайте")
-
-    role = payload.get("r") if payload.get("r") in ("admin", "player") else "player"
-    fixed = ADMIN_NICKS.get(nick.lower())
-    if fixed:
-        role = "admin"
-    return {
-        "nick": nick,
-        "role": role,
-        "main": fixed == "main",
-        "muted": bool(payload.get("mu")),
-        "login_at": time.strftime("%d.%m.%Y %H:%M"),
-    }
-
-
 def redeem_launcher_code(code):
     """Погашает одноразовый код BLS2 из базы и возвращает аккаунт."""
     code = (code or "").strip().replace("\n", "").replace("\r", "")
@@ -384,6 +325,11 @@ config.setdefault("use_custom_menu", False)
 config.setdefault("client_id", "")
 config.setdefault("redirect_uri", DEFAULT_REDIRECT)
 config.setdefault("site_account", {})
+# старый вход по подписанному коду BLS1 больше не поддерживается — сбрасываем его
+_legacy_site_account = config.get("site_account") or {}
+if _legacy_site_account and _legacy_site_account.get("source") != "supabase":
+    config["site_account"] = {}
+    save_config(config)
 _saved_nick = load_nickname()
 if _saved_nick:
     config["nickname"] = _saved_nick
@@ -639,21 +585,7 @@ class Api:
     def site_login(self, code):
         code = (code or "").strip()
         try:
-            if code.startswith("BLS2."):
-                acc = redeem_launcher_code(code)
-            else:
-                acc = verify_launcher_code(code)
-                status = fetch_account_status(acc["nick"])
-                if status:
-                    if status.get("banned"):
-                        raise PermissionError(
-                            "Аккаунт забанен: " + (status.get("banReason") or "без причины")
-                        )
-                    acc["role"] = "admin" if status.get("role") == "admin" else "player"
-                    acc["main"] = bool(status.get("main"))
-                    acc["muted"] = bool(status.get("muted"))
-                    acc["banned"] = False
-                    acc["ban_reason"] = ""
+            acc = redeem_launcher_code(code)
         except PermissionError as e:
             return {"ok": False, "error": str(e)}
         except ValueError as e:
@@ -1374,7 +1306,7 @@ input, select { background: #0c0f15; border-color: var(--line); border-radius: 1
       <button class="rail-item" data-page="settings" onclick="showPage('settings')" title="Настройки">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
-      <div class="rail-ver">v3.10</div>
+      <div class="rail-ver">v3.10.1</div>
     </div>
   </aside>
 
@@ -1391,7 +1323,7 @@ input, select { background: #0c0f15; border-color: var(--line); border-radius: 1
         <span class="tb-crumb" id="tb-crumb">Launchpad</span>
       </div>
       <div class="tb-right">
-        <span class="tb-version">v3.10.0</span>
+        <span class="tb-version">v3.10.1</span>
         <button class="tb-icon" onclick="focusSearch()" title="Поиск модов">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
@@ -1838,7 +1770,7 @@ async function renderLaunch() {
               <span class="launch-sub">BritonLauncher <b id="launch-version">${escapeHtml(state.version)}</b><span class="sep">•</span><span id="launch-loader">${escapeHtml(state.loader)}</span></span>
             </button>
           </div>
-          <div class="hero-note">v3.10.0 · BritonLauncher</div>
+          <div class="hero-note">v3.10.1 · BritonLauncher</div>
           <button class="hero-gear" onclick="toggleLaunchConfig()" title="Настройки запуска">
             <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
@@ -2031,7 +1963,7 @@ async function renderSettings() {
 
   document.getElementById('content').innerHTML = `
     <div class="page-title"><span class="grad">Настройки</span></div>
-    <div class="page-sub">BritonLauncher v3.10.0</div>
+    <div class="page-sub">BritonLauncher v3.10.1</div>
 
     <div class="settings-section" style="margin-bottom:14px;">
       <h3>Тема оформления</h3>
@@ -2176,7 +2108,7 @@ if __name__ == "__main__":
         pass
     api = Api()
     window = webview.create_window(
-        "BritonLauncher v3.10.0",
+        "BritonLauncher v3.10.1",
         html=HTML,
         js_api=api,
         width=1280,
