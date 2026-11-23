@@ -15,7 +15,7 @@ import webbrowser
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
 
-CURRENT_VERSION = "3.10.1"
+CURRENT_VERSION = "3.10.2"
 GITHUB_REPO = "KostyaProcrom/BritonLauncher"
 UPDATE_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -280,6 +280,26 @@ def cached_account_status(nick, max_age=60):
     return data
 
 
+def _account_from_profile(profile, token=""):
+    profile = profile or {}
+    nick = str(profile.get("nick") or "").strip()
+    if not re.match(r"^[A-Za-z0-9_]{3,16}$", nick):
+        raise ValueError("База вернула некорректный ник")
+    account = {
+        "nick": nick,
+        "role": "admin" if profile.get("role") == "admin" else "player",
+        "main": bool(profile.get("main")),
+        "muted": bool(profile.get("muted")),
+        "banned": bool(profile.get("banned")),
+        "ban_reason": profile.get("banReason") or "",
+        "login_at": time.strftime("%d.%m.%Y %H:%M"),
+        "source": "supabase",
+    }
+    if token:
+        account["token"] = token
+    return account
+
+
 def redeem_launcher_code(code):
     """Погашает одноразовый код BLS2 из базы и возвращает аккаунт."""
     code = (code or "").strip().replace("\n", "").replace("\r", "")
@@ -296,21 +316,29 @@ def redeem_launcher_code(code):
             raise PermissionError(msg)
         raise ValueError(msg)
 
-    profile = res.get("profile") or {}
-    nick = str(profile.get("nick") or "").strip()
-    if not re.match(r"^[A-Za-z0-9_]{3,16}$", nick):
-        raise ValueError("База вернула некорректный ник")
+    return _account_from_profile(res.get("profile"))
 
-    return {
-        "nick": nick,
-        "role": "admin" if profile.get("role") == "admin" else "player",
-        "main": bool(profile.get("main")),
-        "muted": bool(profile.get("muted")),
-        "banned": bool(profile.get("banned")),
-        "ban_reason": profile.get("banReason") or "",
-        "login_at": time.strftime("%d.%m.%Y %H:%M"),
-        "source": "supabase",
-    }
+
+def login_site_account(nick, password):
+    """Прямой вход по нику и паролю через базу Supabase."""
+    nick = (nick or "").strip()
+    password = password or ""
+    if not nick or not password:
+        raise ValueError("Введи ник и пароль")
+    try:
+        res = supabase_rpc(
+            "bl_login", {"p_nick": nick, "p_password": password}, timeout=25
+        )
+    except Exception as e:
+        raise RuntimeError(f"База недоступна: {e}")
+
+    if not res.get("ok"):
+        msg = res.get("error") or "Не удалось войти"
+        if res.get("code") == "banned":
+            raise PermissionError(msg)
+        raise ValueError(msg)
+
+    return _account_from_profile(res.get("profile"), res.get("token") or "")
 
 
 config = load_config()
@@ -582,6 +610,16 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def _store_site_account(self, acc):
+        with _cfg_lock:
+            config["site_account"] = acc
+            config["nickname"] = acc["nick"]
+            save_config(config)
+        _site_status_cache.update({"nick": acc["nick"], "at": time.time(), "data": None})
+        save_nickname(acc["nick"])
+        self._set_status(f"Вход в аккаунт: {acc['nick']}", "#22c55e", "✅")
+        return {"ok": True, **acc}
+
     def site_login(self, code):
         code = (code or "").strip()
         try:
@@ -592,20 +630,29 @@ class Api:
             return {"ok": False, "error": str(e)}
         except Exception as e:
             return {"ok": False, "error": f"Не удалось прочитать код: {e}"}
+        return self._store_site_account(acc)
 
-        with _cfg_lock:
-            config["site_account"] = acc
-            config["nickname"] = acc["nick"]
-            save_config(config)
-        _site_status_cache.update({"nick": acc["nick"], "at": time.time(), "data": None})
-        save_nickname(acc["nick"])
-        self._set_status(f"Вход через сайт: {acc['nick']}", "#22c55e", "✅")
-        return {"ok": True, **acc}
+    def site_password_login(self, nick, password):
+        try:
+            acc = login_site_account(nick, password)
+        except PermissionError as e:
+            return {"ok": False, "error": str(e)}
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        except Exception as e:
+            return {"ok": False, "error": f"Не удалось войти: {e}"}
+        return self._store_site_account(acc)
 
     def site_logout(self):
         with _cfg_lock:
+            token = (config.get("site_account") or {}).get("token") or ""
             config["site_account"] = {}
             save_config(config)
+        if token:
+            try:
+                supabase_rpc("bl_logout", {"p_token": token}, timeout=10)
+            except Exception:
+                pass
         return {"ok": True}
 
     # ---------- Microsoft авторизация ----------
@@ -1306,7 +1353,7 @@ input, select { background: #0c0f15; border-color: var(--line); border-radius: 1
       <button class="rail-item" data-page="settings" onclick="showPage('settings')" title="Настройки">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
-      <div class="rail-ver">v3.10.1</div>
+      <div class="rail-ver">v3.10.2</div>
     </div>
   </aside>
 
@@ -1323,7 +1370,7 @@ input, select { background: #0c0f15; border-color: var(--line); border-radius: 1
         <span class="tb-crumb" id="tb-crumb">Launchpad</span>
       </div>
       <div class="tb-right">
-        <span class="tb-version">v3.10.1</span>
+        <span class="tb-version">v3.10.2</span>
         <button class="tb-icon" onclick="focusSearch()" title="Поиск модов">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
@@ -1438,14 +1485,14 @@ function titleAccountClick() {
   if (acc && acc.logged_in && acc.role === 'admin') { showPage('admin'); return; }
   if (acc && acc.logged_in) { siteOpen(); return; }
   if (document.body.dataset.activePage !== 'launch') {
-    showPage('launch').then(() => setTimeout(focusSiteCode, 280));
+    showPage('launch').then(() => setTimeout(focusSiteLogin, 280));
   } else {
-    focusSiteCode();
+    focusSiteLogin();
   }
 }
 
-function focusSiteCode() {
-  const input = document.getElementById('site-code');
+function focusSiteLogin() {
+  const input = document.getElementById('site-nick') || document.getElementById('site-code');
   if (input) {
     input.scrollIntoView({ behavior: 'smooth', block: 'center' });
     input.focus();
@@ -1478,7 +1525,7 @@ async function refreshAccount() {
       + (acc.banned ? '<span class="badge mute">БАН</span>' : (acc.muted ? '<span class="badge mute">МУТ</span>' : '')) + '</div>'
       + '<div class="acct-meta">' + (acc.banned
           ? 'Забанен: ' + escapeHtml(acc.ban_reason || 'без причины')
-          : 'Вход через сайт · ' + escapeHtml(acc.login_at || '—')) + '</div></div>'
+          : 'Аккаунт BritonLauncher · ' + escapeHtml(acc.login_at || '—')) + '</div></div>'
       + '</div>'
       + '<div class="acct-actions">'
       + (acc.role === 'admin' ? '<button class="btn" onclick="goAdmin()">Админка</button>' : '')
@@ -1489,23 +1536,34 @@ async function refreshAccount() {
     box.innerHTML = '<div class="acct-row">'
       + '<div class="acct-ava">?</div>'
       + '<div><div class="acct-name">Гость</div>'
-      + '<div class="acct-meta">Вход по коду с сайта</div></div></div>'
-      + '<div class="site-login-row"><input id="site-code" placeholder="Вставь код с сайта" spellcheck="false" />'
-      + '<button class="btn green" onclick="siteLogin()">Войти по коду</button></div>'
+      + '<div class="acct-meta">Вход в аккаунт BritonLauncher</div></div></div>'
+      + '<div class="site-login-row">'
+      + '<input id="site-nick" placeholder="Ник" spellcheck="false" autocomplete="username" onkeydown="sitePasswordLoginKey(event)" />'
+      + '<input id="site-pass" type="password" placeholder="Пароль" autocomplete="current-password" onkeydown="sitePasswordLoginKey(event)" />'
+      + '<button class="btn green" onclick="sitePasswordLogin()">Войти</button>'
+      + '</div>'
+      + '<div class="site-hint" style="margin:0">Или по одноразовому коду с сайта:</div>'
+      + '<div class="site-login-row"><input id="site-code" placeholder="Вставь код с сайта" spellcheck="false" onkeydown="siteLoginKey(event)" />'
+      + '<button class="btn" onclick="siteLogin()">Войти по коду</button></div>'
       + '<button class="btn" onclick="siteOpen()">Открыть сайт</button>'
-      + '<div class="site-hint">Сайт → «Аккаунт» → «Получить код для лаунчера».</div>';
+      + '<div class="site-hint">Нет аккаунта? Зарегистрируйся на сайте — он общий для сайта и лаунчера.</div>';
   }
 }
 
 async function siteOpen() {
   await window.pywebview.api.site_open();
-  showToast('Открой сайт, войди и получи код для лаунчера');
+  showToast('Открой сайт, чтобы зарегистрироваться или получить код');
 }
 
-async function siteLogin() {
-  const code = (document.getElementById('site-code')?.value || '').trim();
-  if (!code) { showToast('Вставь код с сайта'); return; }
-  const res = await window.pywebview.api.site_login(code);
+function sitePasswordLoginKey(event) {
+  if (event.key === 'Enter') sitePasswordLogin();
+}
+
+function siteLoginKey(event) {
+  if (event.key === 'Enter') siteLogin();
+}
+
+function applySiteLogin(res) {
   if (res.ok) {
     showToast(res.muted ? 'Вход выполнен: ' + res.nick + ' (действует мут)' : 'Вход выполнен: ' + res.nick);
     refreshAccount();
@@ -1513,6 +1571,21 @@ async function siteLogin() {
   } else {
     showToast('Ошибка: ' + res.error);
   }
+}
+
+async function sitePasswordLogin() {
+  const nick = (document.getElementById('site-nick')?.value || '').trim();
+  const password = document.getElementById('site-pass')?.value || '';
+  if (!nick || !password) { showToast('Введи ник и пароль'); return; }
+  const res = await window.pywebview.api.site_password_login(nick, password);
+  applySiteLogin(res);
+}
+
+async function siteLogin() {
+  const code = (document.getElementById('site-code')?.value || '').trim();
+  if (!code) { showToast('Вставь код с сайта'); return; }
+  const res = await window.pywebview.api.site_login(code);
+  applySiteLogin(res);
 }
 
 async function siteLogout() {
@@ -1770,7 +1843,7 @@ async function renderLaunch() {
               <span class="launch-sub">BritonLauncher <b id="launch-version">${escapeHtml(state.version)}</b><span class="sep">•</span><span id="launch-loader">${escapeHtml(state.loader)}</span></span>
             </button>
           </div>
-          <div class="hero-note">v3.10.1 · BritonLauncher</div>
+          <div class="hero-note">v3.10.2 · BritonLauncher</div>
           <button class="hero-gear" onclick="toggleLaunchConfig()" title="Настройки запуска">
             <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
@@ -1809,8 +1882,8 @@ async function renderLaunch() {
             <div class="news-cover">
               <span class="news-big">3.10</span>
               <span class="news-tag">Обновление лаунчера</span>
-              <span class="news-title">Аккаунты в Supabase</span>
-              <span class="news-desc">Единый вход с сайтом, роли, баны и муты.</span>
+              <span class="news-title">Вход прямо в лаунчере</span>
+              <span class="news-desc">Ник и пароль или код с сайта — один аккаунт Supabase.</span>
               <span class="news-arrow"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg></span>
             </div>
           </button>
@@ -1963,7 +2036,7 @@ async function renderSettings() {
 
   document.getElementById('content').innerHTML = `
     <div class="page-title"><span class="grad">Настройки</span></div>
-    <div class="page-sub">BritonLauncher v3.10.1</div>
+    <div class="page-sub">BritonLauncher v3.10.2</div>
 
     <div class="settings-section" style="margin-bottom:14px;">
       <h3>Тема оформления</h3>
@@ -2108,7 +2181,7 @@ if __name__ == "__main__":
         pass
     api = Api()
     window = webview.create_window(
-        "BritonLauncher v3.10.1",
+        "BritonLauncher v3.10.2",
         html=HTML,
         js_api=api,
         width=1280,
