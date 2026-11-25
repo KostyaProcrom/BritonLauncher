@@ -154,6 +154,7 @@ def load_config():
             pass
     return {"theme": "glass", "ram": "4G", "nickname": "", "version": "1.20.1",
             "modloader": "Vanilla", "show_console": False, "use_custom_menu": False,
+            "custom_accent": "", "custom_bg": "",
             "client_id": "", "redirect_uri": DEFAULT_REDIRECT, "site_account": {}, "ui": 2}
 
 
@@ -219,6 +220,14 @@ def sanitize_ram(ram):
     if not re.match(r"^\d+[MG]$", ram):
         ram = "4G"
     return ram
+
+
+def sanitize_hex(value, fallback=""):
+    """Оставляет только корректный цвет #rrggbb, иначе — fallback."""
+    value = (value or "").strip()
+    if re.match(r"^#[0-9a-fA-F]{6}$", value):
+        return value.lower()
+    return fallback
 
 
 # ==================== ВХОД ЧЕРЕЗ САЙТ ====================
@@ -350,6 +359,8 @@ if "ui" not in config:
 config.setdefault("theme", "glass")
 config.setdefault("ui", 2)
 config.setdefault("use_custom_menu", False)
+config.setdefault("custom_accent", "")
+config.setdefault("custom_bg", "")
 config.setdefault("client_id", "")
 config.setdefault("redirect_uri", DEFAULT_REDIRECT)
 config.setdefault("site_account", {})
@@ -558,6 +569,8 @@ class Api:
                 "version": data.get("version", config.get("version", "1.20.1")),
                 "modloader": data.get("modloader", config.get("modloader", "Vanilla")),
                 "use_custom_menu": bool(data.get("use_custom_menu", config.get("use_custom_menu", False))),
+                "custom_accent": sanitize_hex(data.get("custom_accent", config.get("custom_accent", "")), ""),
+                "custom_bg": sanitize_hex(data.get("custom_bg", config.get("custom_bg", "")), ""),
             })
             save_config(config)
         self._set_status("Настройки сохранены", "#22c55e", "✅")
@@ -1148,6 +1161,19 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .theme-name { font-size: 12px; font-weight: 700; color: var(--text); }
 .theme-check { position: absolute; top: 6px; right: 8px; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: white; font-size: 12px; display: none; place-items: center; font-weight: 900; }
 .theme-card.active .theme-check { display: grid; }
+.color-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.color-field { display: flex; align-items: center; gap: 10px; background: rgba(128,128,128,0.08); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; transition: opacity 0.18s; }
+.color-field.off { opacity: 0.45; }
+.color-field span { font-size: 12px; color: var(--text-dim); font-weight: 700; }
+.color-field input[type="color"] { width: 40px; height: 30px; padding: 0; margin: 0; border: none; background: none; border-radius: 8px; cursor: pointer; flex-shrink: 0; }
+.color-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.color-field input[type="color"]::-webkit-color-swatch { border: 1px solid rgba(255,255,255,0.28); border-radius: 8px; }
+.color-field code { margin-left: auto; font-size: 11px; color: var(--text-mute); font-family: 'Consolas', 'JetBrains Mono', monospace; }
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+.swatch { width: 28px; height: 28px; padding: 0; border-radius: 9px; border: 1px solid rgba(255,255,255,0.22); cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+.swatch:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0,0,0,0.35); }
+.swatch-reset { background: transparent; color: var(--text-dim); font-size: 15px; line-height: 1; }
+.swatch-reset:hover { color: var(--text); }
 #custom-menu-iframe { width: 100%; height: 100%; border: none; background: transparent; display: none; }
 
 /* ================= Launchpad redesign ================= */
@@ -2046,6 +2072,108 @@ function showToast(msg) {
 }
 
 function applyTheme(id) { document.documentElement.setAttribute('data-theme', id); }
+
+/* ---------- Свои цвета (акцент + фон) ---------- */
+const CUSTOM_VARS = ['--bg', '--bg-soft', '--body-bg', '--panel', '--panel-2', '--glass',
+  '--accent', '--accent-soft', '--gold', '--gold-hi', '--ice', '--ice-hi', '--ice-lo',
+  '--grad-1', '--grad-2'];
+
+function _hexToRgb(hex) {
+  hex = String(hex || '').replace('#', '').trim();
+  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+  return { r: parseInt(hex.slice(0, 2), 16), g: parseInt(hex.slice(2, 4), 16), b: parseInt(hex.slice(4, 6), 16) };
+}
+function _rgbToHex(r, g, b) {
+  return '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+}
+function _mixHex(a, b, t) {
+  const A = _hexToRgb(a), B = _hexToRgb(b);
+  if (!A || !B) return a;
+  return _rgbToHex(A.r + (B.r - A.r) * t, A.g + (B.g - A.g) * t, A.b + (B.b - A.b) * t);
+}
+function _rgba(hex, a) {
+  const c = _hexToRgb(hex);
+  return c ? `rgba(${c.r}, ${c.g}, ${c.b}, ${a})` : hex;
+}
+function _luma(hex) {
+  const c = _hexToRgb(hex);
+  return c ? (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255 : 0;
+}
+
+function applyCustomColors(accent, bg) {
+  const root = document.documentElement;
+  CUSTOM_VARS.forEach(v => root.style.removeProperty(v));
+  const old = document.getElementById('custom-colors-style');
+  if (old) old.remove();
+  if (!_hexToRgb(accent) && !_hexToRgb(bg)) return;
+  accent = _hexToRgb(accent) ? accent : '#a9cfff';
+  bg = _hexToRgb(bg) ? bg : '#05080f';
+  const accentHi = _mixHex(accent, '#ffffff', 0.72);
+  const accentMid = _mixHex(accent, '#ffffff', 0.42);
+  const accentLo = _mixHex(accent, '#000000', 0.24);
+  const onAccent = _luma(accentHi) > 0.62 ? '#08121f' : '#ffffff';
+  const set = (k, v) => root.style.setProperty(k, v);
+  set('--accent', accent);
+  set('--accent-soft', _rgba(accent, 0.16));
+  set('--gold', accent);
+  set('--gold-hi', accentHi);
+  set('--ice', accent);
+  set('--ice-hi', accentHi);
+  set('--ice-lo', accentLo);
+  set('--grad-1', accentHi);
+  set('--grad-2', accent);
+  set('--bg', bg);
+  set('--bg-soft', _mixHex(bg, '#ffffff', 0.045));
+  set('--panel', _mixHex(bg, '#ffffff', 0.05));
+  set('--panel-2', _mixHex(bg, '#ffffff', 0.08));
+  set('--glass', _rgba(bg, 0.72));
+  set('--body-bg', `radial-gradient(1000px 640px at 8% -12%, ${_rgba(accent, 0.16)}, transparent 62%), radial-gradient(820px 540px at 100% 0%, ${_rgba(accent, 0.09)}, transparent 58%), ${bg}`);
+  const css = `
+    :root #titlebar { background: ${_rgba(bg, 0.7)} !important; }
+    :root .rail { background: ${_rgba(bg, 0.94)} !important; }
+    :root .panel, :root .news-card, :root .settings-section, :root .admin-card,
+    :root .result-item, :root .theme-card, :root .hc-panel {
+      background: linear-gradient(160deg, rgba(255,255,255,0.09), rgba(255,255,255,0.015) 52%), ${_rgba(bg, 0.66)} !important;
+    }
+    :root .lp-hero { background: ${bg} !important; }
+    :root body::after {
+      background: radial-gradient(circle at 38% 38%, ${_rgba(accent, 0.2)}, transparent 58%),
+                  radial-gradient(circle at 72% 70%, ${_rgba(accent, 0.13)}, transparent 55%) !important;
+    }
+    :root .news-card .news-cover {
+      background: radial-gradient(circle at 85% 15%, ${_rgba(accent, 0.26)}, transparent 55%),
+                  linear-gradient(135deg, ${_mixHex(bg, '#ffffff', 0.05)} 0%, ${bg} 74%) !important;
+    }
+    :root .rail-item.active { background: ${_rgba(accent, 0.15)} !important; color: ${accentHi} !important; }
+    :root .rail-item.active::before { background: linear-gradient(180deg, ${accentHi}, ${accentLo}) !important; }
+    :root .qtile { color: ${accent} !important; }
+    :root .launch-btn, :root .btn.primary, :root .step-num {
+      background: linear-gradient(165deg, ${accentHi} 0%, ${accentMid} 52%, ${accent} 100%) !important;
+      color: ${onAccent} !important;
+    }
+    :root .btn:hover { border-color: ${_rgba(accent, 0.55)} !important; color: ${accentHi} !important; }
+    :root input:focus, :root select:focus { border-color: ${_rgba(accent, 0.7)} !important; box-shadow: 0 0 0 3px ${_rgba(accent, 0.16)} !important; }
+    :root .switch.on { background: linear-gradient(135deg, ${accentHi}, ${accent}) !important; }
+    :root .theme-card.active { border-color: ${accent} !important; box-shadow: 0 0 0 3px ${_rgba(accent, 0.2)} !important; }
+    :root .theme-check { background: ${accent} !important; color: ${onAccent} !important; }
+    :root .title-account:hover { border-color: ${_rgba(accent, 0.55)} !important; }
+    :root .server-ip button:hover, :root .panel-head .link:hover, :root .lp-news-head .link:hover { color: ${accent} !important; }
+    :root .news-card:hover { border-color: ${_rgba(accent, 0.45)} !important; }
+    :root .result-item.selected { border-color: ${_rgba(accent, 0.8)} !important; background: ${_rgba(accent, 0.1)} !important; }
+    :root .page-title .grad { background: linear-gradient(115deg, ${accentHi} 5%, ${accent} 50%, ${accentLo} 100%) !important; -webkit-background-clip: text !important; background-clip: text !important; }
+    :root .badge.role { background: ${_rgba(accent, 0.16)} !important; color: ${accentHi} !important; }
+    :root ::selection { background: ${_rgba(accent, 0.3)} !important; }
+  `;
+  const style = document.createElement('style');
+  style.id = 'custom-colors-style';
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+function currentThemeColor(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return _hexToRgb(v) ? v : fallback;
+}
 function setStatus(text, color, icon) {
   const t = document.getElementById('status-text');
   const d = document.getElementById('status-dot');
@@ -2413,29 +2541,49 @@ async function renderLaunch() {
   if (document.body.dataset.activePage !== 'launch') return;
   window.__savedNick = cfg.nickname || '';
   window.__savedTheme = cfg.theme || 'glass';
+  applyCustomColors(cfg.custom_accent, cfg.custom_bg);
   state.version = cfg.version || state.version;
   state.loader = cfg.modloader || state.loader;
 
   const stars = heroStars();
   const isGlass = (cfg.theme || 'glass') === 'glass';
-  const artBg = isGlass ? '#060b13' : '#070a10';
-  const blobA = isGlass ? '#2a5a8f' : '#6b4a12';
-  const blobB = isGlass ? '#12595c' : '#0d4a30';
-  const blobC = isGlass ? '#1b3050' : '#2a1d06';
-  const cubeLeft = isGlass
+  const customAccent = _hexToRgb(cfg.custom_accent) ? cfg.custom_accent : '';
+  const customBg = _hexToRgb(cfg.custom_bg) ? cfg.custom_bg : '';
+  let artBg = isGlass ? '#060b13' : '#070a10';
+  let blobA = isGlass ? '#2a5a8f' : '#6b4a12';
+  let blobB = isGlass ? '#12595c' : '#0d4a30';
+  let blobC = isGlass ? '#1b3050' : '#2a1d06';
+  let cubeLeft = isGlass
     ? isoCube(150, 148, 38, '#dcecff', '#16273c', '#4d6d92', 'rgba(190,220,255,0.4)')
       + isoCube(202, 194, 20, '#8fb6e0', '#12202f', '#3f5a77', 'rgba(160,200,255,0.28)')
       + isoCube(118, 196, 14, '#b9d6ff', '#16273c', '#3f5a77', 'rgba(160,200,255,0.25)')
     : isoCube(150, 148, 38, '#f3cf86', '#3a2a0c', '#7a5a1f', 'rgba(255,214,140,0.35)')
       + isoCube(202, 194, 20, '#c99a45', '#2a1e08', '#6b4e1a', 'rgba(255,205,120,0.25)')
       + isoCube(118, 196, 14, '#e6b45c', '#2e2109', '#5e4415', 'rgba(255,205,120,0.2)');
-  const cubeRight = isGlass
+  let cubeRight = isGlass
     ? isoCube(750, 146, 34, '#dbe9f7', '#3c4b5e', '#6d8199', 'rgba(255,255,255,0.24)')
       + isoCube(696, 190, 18, '#9fb2c6', '#2c3744', '#55677c', 'rgba(255,255,255,0.16)')
       + isoCube(618, 78, 11, '#7fe3ff', '#0b2b3a', '#1f6079', 'rgba(127,227,255,0.32)')
     : isoCube(750, 146, 34, '#c7d2e2', '#4d5563', '#7b8698', 'rgba(255,255,255,0.22)')
       + isoCube(696, 190, 18, '#8e99aa', '#363c47', '#5c6575', 'rgba(255,255,255,0.16)')
       + isoCube(618, 78, 11, '#3ddc84', '#0a2e1b', '#12603a', 'rgba(61,220,132,0.3)');
+  if (customBg || customAccent) {
+    if (customBg) artBg = customBg;
+    if (customAccent) {
+      const hi = _mixHex(customAccent, '#ffffff', 0.7);
+      const mid = _mixHex(customAccent, '#ffffff', 0.35);
+      const lo = _mixHex(customAccent, '#000000', 0.3);
+      blobA = customAccent;
+      blobB = _mixHex(customAccent, customBg || '#05080f', 0.35);
+      blobC = _mixHex(customAccent, customBg || '#05080f', 0.6);
+      cubeLeft = isoCube(150, 148, 38, hi, lo, mid, _rgba(customAccent, 0.4))
+        + isoCube(202, 194, 20, mid, lo, _mixHex(customAccent, '#000000', 0.15), _rgba(customAccent, 0.28))
+        + isoCube(118, 196, 14, hi, lo, mid, _rgba(customAccent, 0.25));
+      cubeRight = isoCube(750, 146, 34, _mixHex(customAccent, '#ffffff', 0.85), lo, mid, _rgba(customAccent, 0.24))
+        + isoCube(696, 190, 18, mid, lo, _mixHex(customAccent, '#000000', 0.2), _rgba(customAccent, 0.16))
+        + isoCube(618, 78, 11, hi, lo, mid, _rgba(customAccent, 0.32));
+    }
+  }
 
   document.getElementById('content').innerHTML = `
   <div class="lp">
@@ -2666,6 +2814,7 @@ async function downloadSelected() {
 
 async function renderSettings() {
   const cfg = await window.pywebview.api.get_config();
+  applyCustomColors(cfg.custom_accent, cfg.custom_bg);
   const themes = [
     { id: 'glass', name: 'Liquid Glass', g1: '#eef7ff', g2: '#8fbcff' },
     { id: 'lunar', name: 'Obsidian Gold', g1: '#f8dda0', g2: '#a9772e' },
@@ -2678,6 +2827,12 @@ async function renderSettings() {
   ];
   const cards = themes.map(t => `<div class="theme-card ${cfg.theme === t.id ? 'active' : ''}" data-theme-id="${t.id}" onclick="pickTheme('${t.id}')"><div class="theme-preview" style="background: linear-gradient(135deg, ${t.g1}, ${t.g2});"></div><div class="theme-name">${t.name}</div><div class="theme-check">✓</div></div>`).join('');
 
+  const customOn = !!(_hexToRgb(cfg.custom_accent) || _hexToRgb(cfg.custom_bg));
+  const accentVal = _hexToRgb(cfg.custom_accent) ? cfg.custom_accent : currentThemeColor('--accent', '#a9cfff');
+  const bgVal = _hexToRgb(cfg.custom_bg) ? cfg.custom_bg : currentThemeColor('--bg', '#05080f');
+  const swatches = ['#a9cfff', '#e6b45c', '#a855f7', '#34d399', '#f87171', '#f472b6']
+    .map(c => `<button type="button" class="swatch" style="background:${c}" title="${c}" onclick="pickCustomAccent('${c}')"></button>`).join('');
+
   document.getElementById('content').innerHTML = `
     <div class="page-title"><span class="grad">Настройки</span></div>
     <div class="page-sub">BritonLauncher v3.11.0</div>
@@ -2685,6 +2840,30 @@ async function renderSettings() {
     <div class="settings-section" style="margin-bottom:14px;">
       <h3>Тема оформления</h3>
       <div class="theme-grid">${cards}</div>
+    </div>
+
+    <div class="settings-section" style="margin-bottom:14px;">
+      <div class="switch-row">
+        <h3 style="margin:0;">Свои цвета</h3>
+        <div id="custom-colors-switch" class="switch ${customOn ? 'on' : ''}" onclick="toggleCustomColors(this)"></div>
+      </div>
+      <div class="color-grid" id="custom-color-fields">
+        <label class="color-field ${customOn ? '' : 'off'}">
+          <span>Акцент</span>
+          <input type="color" id="custom-accent" value="${accentVal}" ${customOn ? '' : 'disabled'} oninput="previewCustomColors()" />
+          <code id="custom-accent-hex">${accentVal}</code>
+        </label>
+        <label class="color-field ${customOn ? '' : 'off'}">
+          <span>Фон</span>
+          <input type="color" id="custom-bg" value="${bgVal}" ${customOn ? '' : 'disabled'} oninput="previewCustomColors()" />
+          <code id="custom-bg-hex">${bgVal}</code>
+        </label>
+      </div>
+      <div class="swatches">
+        ${swatches}
+        <button type="button" class="swatch swatch-reset" title="Как в теме" onclick="resetCustomColors()">⟲</button>
+      </div>
+      <div class="page-status" id="custom-color-status">${customOn ? 'Свои цвета включены' : 'Используются цвета выбранной темы'}</div>
     </div>
 
     <div class="settings-grid">
@@ -2789,17 +2968,64 @@ async function pickTheme(id) {
   document.querySelectorAll('.theme-card').forEach(c => c.classList.toggle('active', c.dataset.themeId === id));
   await window.pywebview.api.set_theme(id);
 }
+
+/* ---------- Свои цвета ---------- */
+function toggleCustomColors(sw) {
+  sw.classList.toggle('on');
+  previewCustomColors();
+}
+function previewCustomColors() {
+  const sw = document.getElementById('custom-colors-switch');
+  const on = !!(sw && sw.classList.contains('on'));
+  const a = document.getElementById('custom-accent');
+  const b = document.getElementById('custom-bg');
+  document.querySelectorAll('#custom-color-fields .color-field').forEach(el => el.classList.toggle('off', !on));
+  if (a) a.disabled = !on;
+  if (b) b.disabled = !on;
+  const accent = a ? a.value : '';
+  const bg = b ? b.value : '';
+  const ah = document.getElementById('custom-accent-hex');
+  const bh = document.getElementById('custom-bg-hex');
+  if (ah) ah.textContent = accent;
+  if (bh) bh.textContent = bg;
+  applyCustomColors(on ? accent : '', on ? bg : '');
+  const status = document.getElementById('custom-color-status');
+  if (status) {
+    status.textContent = on ? 'Свои цвета включены — не забудь сохранить настройки' : 'Используются цвета выбранной темы';
+    status.style.color = 'var(--text-mute)';
+  }
+}
+function pickCustomAccent(hex) {
+  const sw = document.getElementById('custom-colors-switch');
+  const a = document.getElementById('custom-accent');
+  if (!sw || !a) return;
+  if (!sw.classList.contains('on')) sw.classList.add('on');
+  a.value = hex;
+  previewCustomColors();
+}
+function resetCustomColors() {
+  const sw = document.getElementById('custom-colors-switch');
+  if (sw) sw.classList.remove('on');
+  previewCustomColors();
+}
+
 async function saveSettings() {
   const ram = (document.getElementById('ram')?.value || '4G').trim() || '4G';
   const show_console = document.getElementById('console-switch').classList.contains('on');
+  const customOn = !!document.getElementById('custom-colors-switch')?.classList.contains('on');
+  const custom_accent = customOn ? (document.getElementById('custom-accent')?.value || '') : '';
+  const custom_bg = customOn ? (document.getElementById('custom-bg')?.value || '') : '';
   const cfg = await window.pywebview.api.get_config();
   await window.pywebview.api.save_settings({
     theme: cfg.theme || 'glass',
     ram,
     show_console,
     version: state.version,
-    modloader: state.loader
+    modloader: state.loader,
+    custom_accent,
+    custom_bg
   });
+  applyCustomColors(custom_accent, custom_bg);
   showToast('Настройки сохранены');
 }
 
@@ -2807,6 +3033,7 @@ window.addEventListener('pywebviewready', async () => {
   try {
     const cfg = await window.pywebview.api.get_config();
     applyTheme(cfg.theme || 'glass');
+    applyCustomColors(cfg.custom_accent, cfg.custom_bg);
     state.version = cfg.version || state.version;
     state.loader = cfg.modloader || state.loader;
   } catch (e) { applyTheme('glass'); }
