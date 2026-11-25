@@ -15,7 +15,7 @@ import webbrowser
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
 
-CURRENT_VERSION = "3.10.2"
+CURRENT_VERSION = "3.11.0"
 GITHUB_REPO = "KostyaProcrom/BritonLauncher"
 UPDATE_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -152,7 +152,7 @@ def load_config():
                     return data
         except Exception:
             pass
-    return {"theme": "lunar", "ram": "4G", "nickname": "", "version": "1.20.1",
+    return {"theme": "glass", "ram": "4G", "nickname": "", "version": "1.20.1",
             "modloader": "Vanilla", "show_console": False, "use_custom_menu": False,
             "client_id": "", "redirect_uri": DEFAULT_REDIRECT, "site_account": {}, "ui": 2}
 
@@ -344,10 +344,10 @@ def login_site_account(nick, password):
 config = load_config()
 if "ui" not in config:
     # одноразовый переход на новый интерфейс Launchpad
-    config["theme"] = "lunar"
+    config["theme"] = "glass"
     config["ui"] = 2
     save_config(config)
-config.setdefault("theme", "lunar")
+config.setdefault("theme", "glass")
 config.setdefault("ui", 2)
 config.setdefault("use_custom_menu", False)
 config.setdefault("client_id", "")
@@ -552,7 +552,7 @@ class Api:
         data = data or {}
         with _cfg_lock:
             config.update({
-                "theme": data.get("theme", config.get("theme", "lunar")),
+                "theme": data.get("theme", config.get("theme", "glass")),
                 "ram": sanitize_ram(data.get("ram", config.get("ram", "4G"))),
                 "show_console": bool(data.get("show_console", config.get("show_console", False))),
                 "version": data.get("version", config.get("version", "1.20.1")),
@@ -564,7 +564,7 @@ class Api:
         return {"ok": True}
 
     def set_theme(self, theme):
-        allowed = {"purple", "ocean", "forest", "light", "redsea", "black", "lunar"}
+        allowed = {"purple", "ocean", "forest", "light", "redsea", "black", "lunar", "glass"}
         if theme not in allowed:
             return {"ok": False, "error": "Неизвестная тема"}
         with _cfg_lock:
@@ -1029,7 +1029,7 @@ class Api:
 
 
 HTML = """<!DOCTYPE html>
-<html lang="ru" data-theme="lunar">
+<html lang="ru" data-theme="glass">
 <head>
 <meta charset="UTF-8">
 <title>BritonLauncher</title>
@@ -1323,6 +1323,636 @@ input, select { background: #0c0f15; border-color: var(--line); border-radius: 1
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
 }
+
+/* ================= Obsidian Gold — визуал сайта ================= */
+:root[data-theme="lunar"] {
+  --bg: #06080c;
+  --bg-soft: #0a0f16;
+  --glass: rgba(9, 13, 19, 0.92);
+  --glass-border: rgba(255, 255, 255, 0.075);
+  --panel: #0b1017;
+  --panel-2: #0f1620;
+  --line: rgba(255, 255, 255, 0.075);
+  --text: #f3f6fa;
+  --text-dim: #9ba7b8;
+  --text-mute: #68758a;
+  --gold: #e6b45c;
+  --gold-hi: #f8dda0;
+  --grad-1: #f8dda0;
+  --grad-2: #e6b45c;
+  --accent: #e6b45c;
+  --accent-soft: rgba(230, 180, 92, 0.12);
+  --green: #3ddc84;
+  --orange: #e6b45c;
+  --red: #f87171;
+  --on-accent: #1b1305;
+  --body-bg:
+    radial-gradient(1000px 620px at 6% -12%, rgba(230, 180, 92, 0.12), transparent 62%),
+    radial-gradient(820px 520px at 100% 0%, rgba(61, 220, 132, 0.055), transparent 58%),
+    radial-gradient(900px 700px at 50% 115%, rgba(230, 180, 92, 0.045), transparent 60%),
+    #06080c;
+}
+
+:root[data-theme="lunar"] body {
+  font-family: 'Inter', 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+:root[data-theme="lunar"] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(ellipse 85% 60% at 50% 0%, #000 18%, transparent 76%);
+  mask-image: radial-gradient(ellipse 85% 60% at 50% 0%, #000 18%, transparent 76%);
+}
+:root[data-theme="lunar"] #app { position: relative; z-index: 1; }
+
+/* Каркас */
+:root[data-theme="lunar"] .rail,
+:root[data-theme="lunar"] #titlebar {
+  background: rgba(6, 8, 12, 0.88);
+  border-color: var(--line);
+}
+:root[data-theme="lunar"] #titlebar { border-bottom: 1px solid var(--line); position: relative; }
+:root[data-theme="lunar"] #titlebar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(230, 180, 92, 0.35), transparent);
+  pointer-events: none;
+}
+:root[data-theme="lunar"] .rail { border-right: 1px solid var(--line); }
+:root[data-theme="lunar"] .rail-logo,
+:root[data-theme="lunar"] .tb-brand .brand-logo {
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px rgba(230, 180, 92, 0.3), 0 10px 26px -12px rgba(230, 180, 92, 0.55);
+}
+:root[data-theme="lunar"] .tb-brand .name b { color: var(--accent); font-weight: 800; }
+:root[data-theme="lunar"] .rail-item:hover,
+:root[data-theme="lunar"] .tb-icon:hover,
+:root[data-theme="lunar"] .tb-back:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+:root[data-theme="lunar"] .rail-item.active { background: rgba(230, 180, 92, 0.13); color: var(--gold-hi); }
+:root[data-theme="lunar"] .rail-item.active::before {
+  background: linear-gradient(180deg, var(--gold-hi), #c08c33);
+}
+:root[data-theme="lunar"] .tb-version {
+  background: var(--panel-2);
+  border-color: var(--line);
+  color: var(--text-mute);
+}
+:root[data-theme="lunar"] .tb-sep { background: var(--line); }
+
+/* Аккаунт в шапке */
+:root[data-theme="lunar"] .title-account {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: var(--line);
+}
+:root[data-theme="lunar"] .title-account:hover {
+  border-color: rgba(230, 180, 92, 0.5);
+  background: rgba(230, 180, 92, 0.08);
+}
+:root[data-theme="lunar"] .title-account.logged .dot {
+  background: var(--green);
+  box-shadow: 0 0 8px rgba(61, 220, 132, 0.8);
+}
+:root[data-theme="lunar"] .title-account .avatar,
+:root[data-theme="lunar"] .acct-ava {
+  background: linear-gradient(135deg, var(--gold-hi), #c9973f);
+  color: #1b1305;
+  box-shadow: 0 8px 18px -8px rgba(230, 180, 92, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+/* Launchpad */
+:root[data-theme="lunar"] .lp-welcome { letter-spacing: -0.3px; }
+:root[data-theme="lunar"] .lp-welcome .nick { color: var(--gold-hi); }
+:root[data-theme="lunar"] .live-dot {
+  background: var(--green);
+  box-shadow: 0 0 10px rgba(61, 220, 132, 0.8);
+}
+:root[data-theme="lunar"] .online-pill { color: var(--text-dim); }
+:root[data-theme="lunar"] .qtile {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--line);
+  color: var(--gold);
+  box-shadow: none;
+}
+:root[data-theme="lunar"] .qtile:hover {
+  background: rgba(230, 180, 92, 0.12);
+  border-color: rgba(230, 180, 92, 0.45);
+  color: var(--gold-hi);
+}
+:root[data-theme="lunar"] .lp-hero {
+  border-color: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  box-shadow: 0 30px 70px -40px rgba(0, 0, 0, 0.95), 0 0 90px -46px rgba(230, 180, 92, 0.55);
+}
+:root[data-theme="lunar"] .lp-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(230, 180, 92, 0.55), transparent);
+  z-index: 3;
+  pointer-events: none;
+}
+:root[data-theme="lunar"] .launch-btn {
+  background: linear-gradient(165deg, var(--gold-hi) 0%, var(--gold) 52%, #c08c33 100%);
+  color: #1b1305;
+  border-radius: 13px;
+  box-shadow: 0 18px 40px -16px rgba(230, 180, 92, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 -2px 0 rgba(0, 0, 0, 0.16);
+}
+:root[data-theme="lunar"] .launch-btn:hover { filter: brightness(1.05); }
+:root[data-theme="lunar"] .launch-btn:disabled {
+  background: #141a23;
+  color: var(--text-mute);
+  box-shadow: none;
+  filter: none;
+}
+:root[data-theme="lunar"] .launch-btn.busy { animation: launchPulseGold 1.5s ease-in-out infinite; }
+@keyframes launchPulseGold {
+  0%, 100% { box-shadow: 0 16px 34px -14px rgba(230, 180, 92, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+  50% { box-shadow: 0 18px 50px -12px rgba(230, 180, 92, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+}
+:root[data-theme="lunar"] .launch-title { letter-spacing: 1px; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3); }
+:root[data-theme="lunar"] .launch-sub { opacity: 0.82; }
+:root[data-theme="lunar"] .hero-note { color: rgba(255, 255, 255, 0.4); }
+:root[data-theme="lunar"] .hero-gear {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--gold-hi);
+}
+:root[data-theme="lunar"] .hero-gear:hover { background: rgba(230, 180, 92, 0.18); color: #fff; }
+:root[data-theme="lunar"] .hc-panel {
+  background: var(--panel);
+  border-color: rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+}
+:root[data-theme="lunar"] .hc-close { background: rgba(255, 255, 255, 0.06); }
+:root[data-theme="lunar"] .hc-close:hover { background: rgba(230, 180, 92, 0.15); color: var(--gold-hi); }
+:root[data-theme="lunar"] .launch-status { color: var(--text-dim); }
+
+/* Панели справа */
+:root[data-theme="lunar"] .panel {
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.006) 60%),
+    var(--panel);
+  border-color: var(--line);
+  border-radius: 16px;
+}
+:root[data-theme="lunar"] .panel-head .link:hover,
+:root[data-theme="lunar"] .lp-news-head .link:hover { color: var(--gold); }
+:root[data-theme="lunar"] .acct-name .badge.role,
+:root[data-theme="lunar"] .badge.role { background: rgba(230, 180, 92, 0.14); color: var(--gold-hi); }
+:root[data-theme="lunar"] .server-ip {
+  background: #070b11;
+  border-color: var(--line);
+  border-radius: 9px;
+}
+:root[data-theme="lunar"] .server-ip button:hover { color: var(--gold); }
+
+/* Новости */
+:root[data-theme="lunar"] .news-card {
+  background: var(--panel);
+  border-color: var(--line);
+  border-radius: 16px;
+}
+:root[data-theme="lunar"] .news-card:hover { border-color: rgba(230, 180, 92, 0.4); }
+:root[data-theme="lunar"] .news-card.green .news-cover {
+  background:
+    radial-gradient(circle at 85% 15%, rgba(230, 180, 92, 0.34), transparent 55%),
+    linear-gradient(135deg, #221908 0%, #0a0803 74%);
+}
+:root[data-theme="lunar"] .news-card.red .news-cover {
+  background:
+    radial-gradient(circle at 85% 15%, rgba(61, 220, 132, 0.18), transparent 55%),
+    linear-gradient(135deg, #0a1a14 0%, #050b09 74%);
+}
+:root[data-theme="lunar"] .news-card.blue .news-cover {
+  background:
+    radial-gradient(circle at 85% 15%, rgba(230, 180, 92, 0.22), transparent 55%),
+    linear-gradient(135deg, #131722 0%, #070a10 74%);
+}
+:root[data-theme="lunar"] .news-tag { color: rgba(248, 221, 160, 0.62); }
+:root[data-theme="lunar"] .news-big { color: rgba(255, 255, 255, 0.085); }
+:root[data-theme="lunar"] .news-arrow { background: rgba(255, 255, 255, 0.1); }
+:root[data-theme="lunar"] .news-card:hover .news-arrow { background: rgba(230, 180, 92, 0.28); }
+
+/* Кнопки, поля, страницы */
+:root[data-theme="lunar"] .btn {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--line);
+  color: var(--text);
+  border-radius: 11px;
+}
+:root[data-theme="lunar"] .btn:hover {
+  background: rgba(230, 180, 92, 0.12);
+  border-color: rgba(230, 180, 92, 0.5);
+  color: var(--gold-hi);
+}
+:root[data-theme="lunar"] .btn.primary {
+  background: linear-gradient(135deg, var(--gold-hi), var(--gold));
+  color: #1b1305;
+  border: none;
+  box-shadow: 0 18px 40px -22px rgba(230, 180, 92, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+:root[data-theme="lunar"] .btn.primary:hover { filter: brightness(1.04); color: #1b1305; }
+:root[data-theme="lunar"] .btn.green {
+  background: rgba(61, 220, 132, 0.1);
+  border-color: rgba(61, 220, 132, 0.28);
+  color: #6ee7a8;
+}
+:root[data-theme="lunar"] .btn.green:hover { background: rgba(61, 220, 132, 0.18); color: #a7f3c8; }
+:root[data-theme="lunar"] input,
+:root[data-theme="lunar"] select {
+  background: #070b11;
+  border-color: rgba(255, 255, 255, 0.09);
+  border-radius: 11px;
+}
+:root[data-theme="lunar"] input:focus,
+:root[data-theme="lunar"] select:focus {
+  border-color: rgba(230, 180, 92, 0.65);
+  box-shadow: 0 0 0 3px rgba(230, 180, 92, 0.12);
+}
+:root[data-theme="lunar"] input::placeholder { color: #4d596b; }
+:root[data-theme="lunar"] .settings-section,
+:root[data-theme="lunar"] .admin-card,
+:root[data-theme="lunar"] .result-item {
+  background: var(--panel);
+  border-color: var(--line);
+  border-radius: 16px;
+}
+:root[data-theme="lunar"] .page-title .grad {
+  background: linear-gradient(115deg, var(--gold-hi) 5%, var(--gold) 50%, #c08c33 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+:root[data-theme="lunar"] .page-title svg { stroke: var(--gold); }
+:root[data-theme="lunar"] .theme-card { background: var(--panel); border-radius: 14px; }
+:root[data-theme="lunar"] .theme-card.active {
+  border-color: rgba(230, 180, 92, 0.75);
+  box-shadow: 0 0 0 3px rgba(230, 180, 92, 0.12), 0 18px 34px -26px rgba(230, 180, 92, 0.7);
+}
+:root[data-theme="lunar"] .switch.on { background: linear-gradient(135deg, var(--gold-hi), var(--gold)); }
+:root[data-theme="lunar"] .switch.on::after { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); }
+:root[data-theme="lunar"] .result-item.selected {
+  border-color: rgba(230, 180, 92, 0.75);
+  background: linear-gradient(135deg, rgba(230, 180, 92, 0.1), transparent);
+  box-shadow: 0 0 0 1px rgba(230, 180, 92, 0.4);
+}
+:root[data-theme="lunar"] .result-icon { color: var(--gold); background: rgba(230, 180, 92, 0.1); }
+:root[data-theme="lunar"] .result-meta .badge { background: rgba(255, 255, 255, 0.06); }
+:root[data-theme="lunar"] .settings-section h3 { color: var(--text-mute); }
+
+/* Скроллбар */
+:root[data-theme="lunar"] #content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid #06080c;
+}
+:root[data-theme="lunar"] #content::-webkit-scrollbar-thumb:hover { background: rgba(230, 180, 92, 0.35); }
+
+/* ================= Liquid Glass — холодное стекло ================= */
+:root[data-theme="glass"] {
+  --bg: #05080f;
+  --bg-soft: #0a1220;
+  --glass: rgba(11, 18, 30, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --panel: rgba(14, 23, 38, 0.55);
+  --panel-2: rgba(20, 31, 50, 0.66);
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #eff6ff;
+  --text-dim: #a4b4c9;
+  --text-mute: #6b7d93;
+  --gold: #a9cfff;
+  --gold-hi: #eef7ff;
+  --grad-1: #eef7ff;
+  --grad-2: #8fbcff;
+  --accent: #b9d6ff;
+  --accent-soft: rgba(160, 200, 255, 0.14);
+  --green: #4ade9b;
+  --orange: #9ec9ff;
+  --red: #fb7185;
+  --on-accent: #08121f;
+  --ice: #b9d6ff;
+  --ice-hi: #eef7ff;
+  --body-bg:
+    radial-gradient(1000px 640px at 8% -12%, rgba(160, 200, 255, 0.18), transparent 62%),
+    radial-gradient(820px 540px at 100% 0%, rgba(110, 220, 220, 0.1), transparent 58%),
+    radial-gradient(900px 700px at 50% 115%, rgba(140, 175, 255, 0.07), transparent 60%),
+    #05080f;
+}
+
+:root[data-theme="glass"] body {
+  font-family: 'Inter', 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+:root[data-theme="glass"] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.024) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.024) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(ellipse 85% 60% at 50% 0%, #000 18%, transparent 76%);
+  mask-image: radial-gradient(ellipse 85% 60% at 50% 0%, #000 18%, transparent 76%);
+}
+:root[data-theme="glass"] body::after {
+  content: '';
+  position: fixed;
+  z-index: 0;
+  left: -12vw;
+  bottom: -26vw;
+  width: 68vw;
+  height: 68vw;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 38% 38%, rgba(160, 200, 255, 0.2), transparent 58%),
+    radial-gradient(circle at 72% 70%, rgba(110, 220, 220, 0.13), transparent 55%);
+  filter: blur(46px);
+}
+:root[data-theme="glass"] #app { position: relative; z-index: 1; }
+
+/* Каркас */
+:root[data-theme="glass"] .rail,
+:root[data-theme="glass"] #titlebar {
+  background: rgba(7, 12, 21, 0.6);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border-color: var(--line);
+}
+:root[data-theme="glass"] #titlebar { border-bottom: 1px solid var(--line); position: relative; }
+:root[data-theme="glass"] #titlebar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(200, 230, 255, 0.45), transparent);
+  pointer-events: none;
+}
+:root[data-theme="glass"] .rail { border-right: 1px solid var(--line); }
+:root[data-theme="glass"] .rail-logo,
+:root[data-theme="glass"] .tb-brand .brand-logo {
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px rgba(190, 222, 255, 0.35), 0 10px 26px -12px rgba(150, 195, 255, 0.5);
+}
+:root[data-theme="glass"] .tb-brand .name b { color: var(--ice); font-weight: 800; }
+:root[data-theme="glass"] .rail-item:hover,
+:root[data-theme="glass"] .tb-icon:hover,
+:root[data-theme="glass"] .tb-back:hover { background: rgba(255, 255, 255, 0.07); color: var(--text); }
+:root[data-theme="glass"] .rail-item.active {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--ice-hi);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+:root[data-theme="glass"] .rail-item.active::before {
+  background: linear-gradient(180deg, var(--ice-hi), var(--ice-lo, #6d9fd8));
+}
+:root[data-theme="glass"] .tb-version {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--line);
+  color: var(--text-dim);
+}
+:root[data-theme="glass"] .tb-sep { background: var(--line); }
+
+/* Аккаунт в шапке */
+:root[data-theme="glass"] .title-account {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: var(--line-strong, rgba(255, 255, 255, 0.17));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(14px);
+}
+:root[data-theme="glass"] .title-account:hover {
+  border-color: rgba(190, 222, 255, 0.55);
+  background: rgba(190, 222, 255, 0.1);
+}
+:root[data-theme="glass"] .title-account.logged .dot {
+  background: var(--green);
+  box-shadow: 0 0 8px rgba(74, 222, 155, 0.8);
+}
+:root[data-theme="glass"] .title-account .avatar,
+:root[data-theme="glass"] .acct-ava {
+  background: linear-gradient(135deg, #f4faff, #b9d6ff 60%, #8fbbec);
+  color: #08121f;
+  box-shadow: 0 8px 18px -8px rgba(150, 195, 255, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* Launchpad */
+:root[data-theme="glass"] .lp-welcome { letter-spacing: -0.3px; }
+:root[data-theme="glass"] .lp-welcome .nick { color: var(--ice-hi); }
+:root[data-theme="glass"] .live-dot {
+  background: var(--green);
+  box-shadow: 0 0 10px rgba(74, 222, 155, 0.8);
+}
+:root[data-theme="glass"] .online-pill { color: var(--text-dim); }
+:root[data-theme="glass"] .qtile {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--ice);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 22px -16px rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(14px);
+}
+:root[data-theme="glass"] .qtile:hover {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.06));
+  border-color: rgba(190, 222, 255, 0.5);
+  color: #fff;
+}
+:root[data-theme="glass"] .lp-hero {
+  border-color: rgba(255, 255, 255, 0.16);
+  border-radius: 20px;
+  box-shadow: 0 30px 70px -40px rgba(0, 0, 0, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 0 90px -46px rgba(160, 200, 255, 0.5);
+}
+:root[data-theme="glass"] .lp-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(220, 240, 255, 0.75), transparent);
+  z-index: 3;
+  pointer-events: none;
+}
+:root[data-theme="glass"] .launch-btn {
+  background: linear-gradient(165deg, #f7fbff 0%, #c9e0ff 52%, #93bfee 100%);
+  color: #08121f;
+  border-radius: 13px;
+  box-shadow: 0 18px 40px -16px rgba(150, 195, 255, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -2px 0 rgba(6, 18, 32, 0.12);
+}
+:root[data-theme="glass"] .launch-btn:hover { filter: brightness(1.05); }
+:root[data-theme="glass"] .launch-btn:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-mute);
+  box-shadow: none;
+  filter: none;
+}
+:root[data-theme="glass"] .launch-btn.busy { animation: launchPulseIce 1.5s ease-in-out infinite; }
+@keyframes launchPulseIce {
+  0%, 100% { box-shadow: 0 16px 34px -14px rgba(150, 195, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.8); }
+  50% { box-shadow: 0 18px 50px -12px rgba(150, 195, 255, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.85); }
+}
+:root[data-theme="glass"] .launch-title { letter-spacing: 1px; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35); }
+:root[data-theme="glass"] .launch-sub { opacity: 0.8; }
+:root[data-theme="glass"] .hero-note { color: rgba(255, 255, 255, 0.42); }
+:root[data-theme="glass"] .hero-gear {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--ice-hi);
+  backdrop-filter: blur(12px);
+}
+:root[data-theme="glass"] .hero-gear:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+:root[data-theme="glass"] .hc-panel {
+  background: rgba(10, 17, 28, 0.82);
+  border-color: rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(22px);
+}
+:root[data-theme="glass"] .hc-close { background: rgba(255, 255, 255, 0.07); }
+:root[data-theme="glass"] .hc-close:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+:root[data-theme="glass"] .launch-status { color: var(--text-dim); }
+
+/* Панели справа */
+:root[data-theme="glass"] .panel {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02) 52%),
+    rgba(12, 20, 33, 0.5);
+  border-color: var(--line);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 20px 44px -34px rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+:root[data-theme="glass"] .panel-head .link:hover,
+:root[data-theme="glass"] .lp-news-head .link:hover { color: var(--ice); }
+:root[data-theme="glass"] .acct-name .badge.role,
+:root[data-theme="glass"] .badge.role { background: rgba(160, 200, 255, 0.16); color: var(--ice-hi); }
+:root[data-theme="glass"] .server-ip {
+  background: rgba(5, 10, 18, 0.6);
+  border-color: var(--line);
+  border-radius: 9px;
+}
+:root[data-theme="glass"] .server-ip button:hover { color: var(--ice); }
+
+/* Новости */
+:root[data-theme="glass"] .news-card {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.015) 52%),
+    rgba(12, 20, 33, 0.5);
+  border-color: var(--line);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+:root[data-theme="glass"] .news-card:hover { border-color: rgba(190, 222, 255, 0.42); }
+:root[data-theme="glass"] .news-card.green .news-cover {
+  background:
+    radial-gradient(circle at 85% 15%, rgba(160, 200, 255, 0.32), transparent 55%),
+    linear-gradient(135deg, #0f1d30 0%, #070b13 74%);
+}
+:root[data-theme="glass"] .news-card.red .news-cover {
+  background:
+    radial-gradient(circle at 85% 15%, rgba(74, 222, 155, 0.2), transparent 55%),
+    linear-gradient(135deg, #0a1a18 0%, #050b0a 74%);
+}
+:root[data-theme="glass"] .news-card.blue .news-cover {
+  background:
+    radial-gradient(circle at 85% 15%, rgba(160, 200, 255, 0.24), transparent 55%),
+    linear-gradient(135deg, #101827 0%, #070a11 74%);
+}
+:root[data-theme="glass"] .news-tag { color: rgba(220, 238, 255, 0.62); }
+:root[data-theme="glass"] .news-big { color: rgba(255, 255, 255, 0.09); }
+:root[data-theme="glass"] .news-arrow { background: rgba(255, 255, 255, 0.12); }
+:root[data-theme="glass"] .news-card:hover .news-arrow { background: rgba(255, 255, 255, 0.24); }
+
+/* Кнопки, поля, страницы */
+:root[data-theme="glass"] .btn {
+  background: rgba(255, 255, 255, 0.055);
+  border-color: var(--line);
+  color: var(--text);
+  border-radius: 11px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(12px);
+}
+:root[data-theme="glass"] .btn:hover {
+  background: rgba(190, 222, 255, 0.12);
+  border-color: rgba(190, 222, 255, 0.5);
+  color: var(--ice-hi);
+}
+:root[data-theme="glass"] .btn.primary {
+  background: linear-gradient(135deg, #f7fbff, #bcd9ff 60%, #93bfee);
+  color: #08121f;
+  border: none;
+  box-shadow: 0 18px 40px -22px rgba(150, 195, 255, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+:root[data-theme="glass"] .btn.primary:hover { filter: brightness(1.04); color: #08121f; }
+:root[data-theme="glass"] .btn.green {
+  background: rgba(74, 222, 155, 0.1);
+  border-color: rgba(74, 222, 155, 0.28);
+  color: #86efac;
+}
+:root[data-theme="glass"] .btn.green:hover { background: rgba(74, 222, 155, 0.18); color: #b6f7d3; }
+:root[data-theme="glass"] input,
+:root[data-theme="glass"] select {
+  background: rgba(5, 10, 18, 0.62);
+  border-color: rgba(255, 255, 255, 0.12);
+  border-radius: 11px;
+}
+:root[data-theme="glass"] input:focus,
+:root[data-theme="glass"] select:focus {
+  border-color: rgba(190, 222, 255, 0.65);
+  box-shadow: 0 0 0 3px rgba(160, 200, 255, 0.14);
+}
+:root[data-theme="glass"] input::placeholder { color: #4d5c70; }
+:root[data-theme="glass"] .settings-section,
+:root[data-theme="glass"] .admin-card,
+:root[data-theme="glass"] .result-item {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.015) 55%),
+    rgba(12, 20, 33, 0.5);
+  border-color: var(--line);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+:root[data-theme="glass"] .page-title .grad {
+  background: linear-gradient(115deg, var(--ice-hi) 5%, var(--ice) 50%, #7fb0e8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+:root[data-theme="glass"] .page-title svg { stroke: var(--ice); }
+:root[data-theme="glass"] .theme-card {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+:root[data-theme="glass"] .theme-card.active {
+  border-color: rgba(190, 222, 255, 0.75);
+  box-shadow: 0 0 0 3px rgba(160, 200, 255, 0.14), 0 18px 34px -26px rgba(150, 195, 255, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.26);
+}
+:root[data-theme="glass"] .switch.on { background: linear-gradient(135deg, #eef7ff, #8fbcff); }
+:root[data-theme="glass"] .switch.on::after { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); }
+:root[data-theme="glass"] .result-item.selected {
+  border-color: rgba(190, 222, 255, 0.75);
+  background: linear-gradient(135deg, rgba(160, 200, 255, 0.12), transparent);
+  box-shadow: 0 0 0 1px rgba(160, 200, 255, 0.4);
+}
+:root[data-theme="glass"] .result-icon { color: var(--ice); background: rgba(160, 200, 255, 0.1); }
+:root[data-theme="glass"] .result-meta .badge { background: rgba(255, 255, 255, 0.07); }
+:root[data-theme="glass"] .settings-section h3 { color: var(--text-mute); }
+
+/* Скроллбар */
+:root[data-theme="glass"] #content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid #05080f;
+}
+:root[data-theme="glass"] #content::-webkit-scrollbar-thumb:hover { background: rgba(190, 222, 255, 0.4); }
 </style>
 </head>
 <body>
@@ -1353,7 +1983,7 @@ input, select { background: #0c0f15; border-color: var(--line); border-radius: 1
       <button class="rail-item" data-page="settings" onclick="showPage('settings')" title="Настройки">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
-      <div class="rail-ver">v3.10.2</div>
+      <div class="rail-ver">v3.11.0</div>
     </div>
   </aside>
 
@@ -1361,7 +1991,7 @@ input, select { background: #0c0f15; border-color: var(--line); border-radius: 1
     <div id="titlebar" class="pywebview-drag-region">
       <div class="tb-brand">
         <div class="brand-logo" role="img" aria-label="BritonLauncher"></div>
-        <span class="name">BritonLauncher</span>
+        <span class="name">Briton<b>Launcher</b></span>
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="tb-sep"></div>
@@ -1370,7 +2000,7 @@ input, select { background: #0c0f15; border-color: var(--line); border-radius: 1
         <span class="tb-crumb" id="tb-crumb">Launchpad</span>
       </div>
       <div class="tb-right">
-        <span class="tb-version">v3.10.2</span>
+        <span class="tb-version">v3.11.0</span>
         <button class="tb-icon" onclick="focusSearch()" title="Поиск модов">
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
@@ -1410,7 +2040,7 @@ function escapeHtml(s) {
 function showToast(msg) {
   const d = document.createElement('div');
   d.textContent = msg;
-  d.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:10px 18px;border-radius:12px;font-size:13px;font-weight:700;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.4);transition:opacity .3s;max-width:80vw;';
+  d.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--on-accent,#fff);padding:10px 18px;border-radius:12px;font-size:13px;font-weight:700;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.4);transition:opacity .3s;max-width:80vw;';
   document.body.appendChild(d);
   setTimeout(() => { d.style.opacity = '0'; setTimeout(() => d.remove(), 300); }, 2600);
 }
@@ -1437,7 +2067,7 @@ function setPlayBusy(b) {
   btn.classList.toggle('busy', b);
   const t = btn.querySelector('.launch-title');
   const s = btn.querySelector('.launch-sub');
-  if (t) t.textContent = b ? 'ЗАПУСК...' : 'LAUNCH GAME';
+  if (t) t.textContent = b ? 'ЗАПУСК...' : 'ИГРАТЬ';
   if (s) s.style.opacity = b ? '0.55' : '0.95';
 }
 
@@ -1731,7 +2361,7 @@ async function saveLaunchConfig() {
   }
   const cfg = await window.pywebview.api.get_config();
   await window.pywebview.api.save_settings({
-    theme: cfg.theme || 'lunar',
+    theme: cfg.theme || 'glass',
     ram,
     show_console,
     version: state.version,
@@ -1782,17 +2412,30 @@ async function renderLaunch() {
   const cfg = await window.pywebview.api.get_config();
   if (document.body.dataset.activePage !== 'launch') return;
   window.__savedNick = cfg.nickname || '';
-  window.__savedTheme = cfg.theme || 'lunar';
+  window.__savedTheme = cfg.theme || 'glass';
   state.version = cfg.version || state.version;
   state.loader = cfg.modloader || state.loader;
 
   const stars = heroStars();
-  const cubeLeft = isoCube(150, 148, 38, '#2fd276', '#0c3b22', '#146b3c', 'rgba(110,255,170,0.35)')
-    + isoCube(202, 194, 20, '#1f9d58', '#082817', '#0f4d2b', 'rgba(110,255,170,0.25)')
-    + isoCube(118, 196, 14, '#39e08a', '#0a2e1b', '#12603a', 'rgba(110,255,170,0.2)');
-  const cubeRight = isoCube(750, 146, 34, '#c7d2e2', '#4d5563', '#7b8698', 'rgba(255,255,255,0.22)')
-    + isoCube(696, 190, 18, '#8e99aa', '#363c47', '#5c6575', 'rgba(255,255,255,0.16)')
-    + isoCube(618, 78, 11, '#ff6b6b', '#5a1111', '#8a1c1c', 'rgba(255,120,120,0.3)');
+  const isGlass = (cfg.theme || 'glass') === 'glass';
+  const artBg = isGlass ? '#060b13' : '#070a10';
+  const blobA = isGlass ? '#2a5a8f' : '#6b4a12';
+  const blobB = isGlass ? '#12595c' : '#0d4a30';
+  const blobC = isGlass ? '#1b3050' : '#2a1d06';
+  const cubeLeft = isGlass
+    ? isoCube(150, 148, 38, '#dcecff', '#16273c', '#4d6d92', 'rgba(190,220,255,0.4)')
+      + isoCube(202, 194, 20, '#8fb6e0', '#12202f', '#3f5a77', 'rgba(160,200,255,0.28)')
+      + isoCube(118, 196, 14, '#b9d6ff', '#16273c', '#3f5a77', 'rgba(160,200,255,0.25)')
+    : isoCube(150, 148, 38, '#f3cf86', '#3a2a0c', '#7a5a1f', 'rgba(255,214,140,0.35)')
+      + isoCube(202, 194, 20, '#c99a45', '#2a1e08', '#6b4e1a', 'rgba(255,205,120,0.25)')
+      + isoCube(118, 196, 14, '#e6b45c', '#2e2109', '#5e4415', 'rgba(255,205,120,0.2)');
+  const cubeRight = isGlass
+    ? isoCube(750, 146, 34, '#dbe9f7', '#3c4b5e', '#6d8199', 'rgba(255,255,255,0.24)')
+      + isoCube(696, 190, 18, '#9fb2c6', '#2c3744', '#55677c', 'rgba(255,255,255,0.16)')
+      + isoCube(618, 78, 11, '#7fe3ff', '#0b2b3a', '#1f6079', 'rgba(127,227,255,0.32)')
+    : isoCube(750, 146, 34, '#c7d2e2', '#4d5563', '#7b8698', 'rgba(255,255,255,0.22)')
+      + isoCube(696, 190, 18, '#8e99aa', '#363c47', '#5c6575', 'rgba(255,255,255,0.16)')
+      + isoCube(618, 78, 11, '#3ddc84', '#0a2e1b', '#12603a', 'rgba(61,220,132,0.3)');
 
   document.getElementById('content').innerHTML = `
   <div class="lp">
@@ -1829,21 +2472,21 @@ async function renderLaunch() {
                 <feGaussianBlur stdDeviation="38"/>
               </filter>
             </defs>
-            <rect width="900" height="300" fill="#070a10"/>
-            <ellipse cx="150" cy="160" rx="200" ry="120" fill="#0f5a34" opacity="0.55" filter="url(#heroBlur)"/>
-            <ellipse cx="770" cy="180" rx="175" ry="110" fill="#123b5c" opacity="0.45" filter="url(#heroBlur)"/>
-            <ellipse cx="450" cy="330" rx="330" ry="120" fill="#3b0b12" opacity="0.45" filter="url(#heroBlur)"/>
+            <rect width="900" height="300" fill="${artBg}"/>
+            <ellipse cx="150" cy="150" rx="220" ry="130" fill="${blobA}" opacity="0.5" filter="url(#heroBlur)"/>
+            <ellipse cx="770" cy="180" rx="180" ry="115" fill="${blobB}" opacity="0.38" filter="url(#heroBlur)"/>
+            <ellipse cx="450" cy="330" rx="340" ry="125" fill="${blobC}" opacity="0.5" filter="url(#heroBlur)"/>
             ${stars}
             ${cubeLeft}
             ${cubeRight}
           </svg>
           <div class="hero-center">
             <button id="play-btn" class="launch-btn" onclick="startGame()">
-              <span class="launch-title">LAUNCH GAME</span>
+              <span class="launch-title">ИГРАТЬ</span>
               <span class="launch-sub">BritonLauncher <b id="launch-version">${escapeHtml(state.version)}</b><span class="sep">•</span><span id="launch-loader">${escapeHtml(state.loader)}</span></span>
             </button>
           </div>
-          <div class="hero-note">v3.10.2 · BritonLauncher</div>
+          <div class="hero-note">v3.11.0 · BritonLauncher</div>
           <button class="hero-gear" onclick="toggleLaunchConfig()" title="Настройки запуска">
             <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
@@ -1880,10 +2523,10 @@ async function renderLaunch() {
         <div class="news-grid">
           <button class="news-card green" onclick="openReleases()">
             <div class="news-cover">
-              <span class="news-big">3.10</span>
+              <span class="news-big">3.11</span>
               <span class="news-tag">Обновление лаунчера</span>
-              <span class="news-title">Вход прямо в лаунчере</span>
-              <span class="news-desc">Ник и пароль или код с сайта — один аккаунт Supabase.</span>
+              <span class="news-title">Liquid Glass</span>
+              <span class="news-desc">Новый интерфейс в стиле сайта: холодное стекло, ледяные блики и прозрачные панели.</span>
               <span class="news-arrow"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="9 18 15 12 9 6"/></svg></span>
             </div>
           </button>
@@ -2024,7 +2667,8 @@ async function downloadSelected() {
 async function renderSettings() {
   const cfg = await window.pywebview.api.get_config();
   const themes = [
-    { id: 'lunar', name: 'Lunar', g1: '#22c55e', g2: '#0f7a3a' },
+    { id: 'glass', name: 'Liquid Glass', g1: '#eef7ff', g2: '#8fbcff' },
+    { id: 'lunar', name: 'Obsidian Gold', g1: '#f8dda0', g2: '#a9772e' },
     { id: 'purple', name: 'Purple Night', g1: '#a855f7', g2: '#ec4899' },
     { id: 'ocean', name: 'Ocean', g1: '#06b6d4', g2: '#3b82f6' },
     { id: 'forest', name: 'Forest', g1: '#10b981', g2: '#84cc16' },
@@ -2036,7 +2680,7 @@ async function renderSettings() {
 
   document.getElementById('content').innerHTML = `
     <div class="page-title"><span class="grad">Настройки</span></div>
-    <div class="page-sub">BritonLauncher v3.10.2</div>
+    <div class="page-sub">BritonLauncher v3.11.0</div>
 
     <div class="settings-section" style="margin-bottom:14px;">
       <h3>Тема оформления</h3>
@@ -2150,7 +2794,7 @@ async function saveSettings() {
   const show_console = document.getElementById('console-switch').classList.contains('on');
   const cfg = await window.pywebview.api.get_config();
   await window.pywebview.api.save_settings({
-    theme: cfg.theme || 'lunar',
+    theme: cfg.theme || 'glass',
     ram,
     show_console,
     version: state.version,
@@ -2162,10 +2806,10 @@ async function saveSettings() {
 window.addEventListener('pywebviewready', async () => {
   try {
     const cfg = await window.pywebview.api.get_config();
-    applyTheme(cfg.theme || 'lunar');
+    applyTheme(cfg.theme || 'glass');
     state.version = cfg.version || state.version;
     state.loader = cfg.modloader || state.loader;
-  } catch (e) { applyTheme('lunar'); }
+  } catch (e) { applyTheme('glass'); }
   showPage('launch');
   refreshAccount();
 });
@@ -2181,7 +2825,7 @@ if __name__ == "__main__":
         pass
     api = Api()
     window = webview.create_window(
-        "BritonLauncher v3.10.2",
+        "BritonLauncher v3.11.0",
         html=HTML,
         js_api=api,
         width=1280,
@@ -2189,7 +2833,7 @@ if __name__ == "__main__":
         min_size=(1100, 720),
         frameless=True,
         easy_drag=False,
-        background_color="#0b0d12",
+        background_color="#06080c",
     )
     api._window = window
     webview.start(debug=False)
