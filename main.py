@@ -1169,11 +1169,22 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .color-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
 .color-field input[type="color"]::-webkit-color-swatch { border: 1px solid rgba(255,255,255,0.28); border-radius: 8px; }
 .color-field code { margin-left: auto; font-size: 11px; color: var(--text-mute); font-family: 'Consolas', 'JetBrains Mono', monospace; }
-.swatches { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
-.swatch { width: 28px; height: 28px; padding: 0; border-radius: 9px; border: 1px solid rgba(255,255,255,0.22); cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
-.swatch:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(0,0,0,0.35); }
-.swatch-reset { background: transparent; color: var(--text-dim); font-size: 15px; line-height: 1; }
-.swatch-reset:hover { color: var(--text); }
+.palette-strip { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.palette-chip { position: relative; width: 96px; height: 60px; padding: 0; border-radius: 13px; border: 1px solid rgba(255,255,255,0.18); cursor: pointer; overflow: hidden; background: linear-gradient(135deg, var(--pa) 0%, var(--pa) 34%, var(--pb) 100%); transition: transform 0.16s, box-shadow 0.16s, border-color 0.16s; }
+.palette-chip::after { content: ''; position: absolute; inset: 0; background: linear-gradient(160deg, rgba(255,255,255,0.28), transparent 46%); pointer-events: none; }
+.palette-chip:hover { transform: translateY(-3px); border-color: rgba(255,255,255,0.4); box-shadow: 0 12px 22px -12px rgba(0,0,0,0.8); }
+.palette-chip.active { border-color: rgba(255,255,255,0.85); box-shadow: 0 0 0 2px var(--accent), 0 12px 24px -14px rgba(0,0,0,0.9); }
+.palette-chip-name { position: absolute; left: 9px; bottom: 7px; z-index: 1; font-size: 10.5px; font-weight: 800; color: #fff; letter-spacing: 0.2px; text-shadow: 0 1px 5px rgba(0,0,0,0.85); }
+.palette-chip-check { position: absolute; top: 6px; right: 6px; z-index: 1; width: 17px; height: 17px; border-radius: 50%; background: rgba(255,255,255,0.94); color: #08121f; font-size: 10px; display: none; place-items: center; font-weight: 900; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+.palette-chip.active .palette-chip-check { display: grid; }
+.color-preview { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: rgba(128,128,128,0.06); }
+.cp-window { border-radius: 11px; overflow: hidden; border: 1px solid rgba(255,255,255,0.12); background: var(--cp-bg, #05080f); box-shadow: inset 0 1px 0 rgba(255,255,255,0.12); }
+.cp-bar { height: 20px; background: rgba(255,255,255,0.06); display: flex; align-items: center; gap: 5px; padding: 0 9px; }
+.cp-bar i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.22); }
+.cp-bar i:first-child { background: rgba(255,255,255,0.38); }
+.cp-body { display: flex; align-items: center; gap: 12px; padding: 13px; }
+.cp-panel { flex: 1; height: 36px; border-radius: 9px; background: linear-gradient(160deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02)); border: 1px solid rgba(255,255,255,0.1); box-shadow: inset 0 1px 0 rgba(255,255,255,0.18); }
+.cp-btn { padding: 10px 20px; border-radius: 9px; font-size: 11px; font-weight: 900; letter-spacing: 0.6px; background: linear-gradient(135deg, var(--cp-hi, #eef7ff), var(--cp-accent, #8fbcff)); color: var(--cp-on, #08121f); box-shadow: 0 10px 20px -10px var(--cp-accent, #8fbcff); }
 #custom-menu-iframe { width: 100%; height: 100%; border: none; background: transparent; display: none; }
 
 /* ================= Launchpad redesign ================= */
@@ -2830,8 +2841,19 @@ async function renderSettings() {
   const customOn = !!(_hexToRgb(cfg.custom_accent) || _hexToRgb(cfg.custom_bg));
   const accentVal = _hexToRgb(cfg.custom_accent) ? cfg.custom_accent : currentThemeColor('--accent', '#a9cfff');
   const bgVal = _hexToRgb(cfg.custom_bg) ? cfg.custom_bg : currentThemeColor('--bg', '#05080f');
-  const swatches = ['#a9cfff', '#e6b45c', '#a855f7', '#34d399', '#f87171', '#f472b6']
-    .map(c => `<button type="button" class="swatch" style="background:${c}" title="${c}" onclick="pickCustomAccent('${c}')"></button>`).join('');
+  const palettes = [
+    { name: 'Лёд', accent: '#a9cfff', bg: '#05080f' },
+    { name: 'Изумруд', accent: '#34d399', bg: '#04120c' },
+    { name: 'Золото', accent: '#e6b45c', bg: '#100b04' },
+    { name: 'Фиолет', accent: '#a855f7', bg: '#120a1e' },
+    { name: 'Океан', accent: '#22d3ee', bg: '#04121a' },
+    { name: 'Закат', accent: '#fb7185', bg: '#1a0a10' },
+    { name: 'Магма', accent: '#f97316', bg: '#150804' },
+    { name: 'Роза', accent: '#f472b6', bg: '#160812' },
+    { name: 'Лаванда', accent: '#c4b5fd', bg: '#0d0b1a' },
+    { name: 'Матрица', accent: '#4ade80', bg: '#03110a' },
+  ];
+  const paletteChips = palettes.map(p => `<button type="button" class="palette-chip" data-accent="${p.accent}" data-bg="${p.bg}" style="--pa:${p.accent};--pb:${p.bg}" onclick="pickPalette(this)"><span class="palette-chip-name">${p.name}</span><span class="palette-chip-check">✓</span></button>`).join('');
 
   document.getElementById('content').innerHTML = `
     <div class="page-title"><span class="grad">Настройки</span></div>
@@ -2859,9 +2881,15 @@ async function renderSettings() {
           <code id="custom-bg-hex">${bgVal}</code>
         </label>
       </div>
-      <div class="swatches">
-        ${swatches}
-        <button type="button" class="swatch swatch-reset" title="Как в теме" onclick="resetCustomColors()">⟲</button>
+      <div class="palette-strip">${paletteChips}</div>
+      <div class="color-preview" id="color-preview">
+        <div class="cp-window">
+          <div class="cp-bar"><i></i><i></i><i></i></div>
+          <div class="cp-body">
+            <div class="cp-panel"></div>
+            <div class="cp-btn">ИГРАТЬ</div>
+          </div>
+        </div>
       </div>
       <div class="page-status" id="custom-color-status">${customOn ? 'Свои цвета включены' : 'Используются цвета выбранной темы'}</div>
     </div>
@@ -2892,6 +2920,8 @@ async function renderSettings() {
     </div>
 
     <button class="btn primary full" onclick="saveSettings()">Сохранить настройки</button>`;
+  updateColorPreview(accentVal, bgVal);
+  markActivePalette(customOn ? accentVal : '', customOn ? bgVal : '');
   refreshMenuPackStatus();
 }
 
@@ -2967,6 +2997,17 @@ async function pickTheme(id) {
   applyTheme(id);
   document.querySelectorAll('.theme-card').forEach(c => c.classList.toggle('active', c.dataset.themeId === id));
   await window.pywebview.api.set_theme(id);
+  const sw = document.getElementById('custom-colors-switch');
+  if (sw && !sw.classList.contains('on')) {
+    const a = document.getElementById('custom-accent');
+    const b = document.getElementById('custom-bg');
+    const accent = currentThemeColor('--accent', '#a9cfff');
+    const bg = currentThemeColor('--bg', '#05080f');
+    if (a) { a.value = accent; const ah = document.getElementById('custom-accent-hex'); if (ah) ah.textContent = accent; }
+    if (b) { b.value = bg; const bh = document.getElementById('custom-bg-hex'); if (bh) bh.textContent = bg; }
+    updateColorPreview(accent, bg);
+    markActivePalette('', '');
+  }
 }
 
 /* ---------- Свои цвета ---------- */
@@ -2989,19 +3030,44 @@ function previewCustomColors() {
   if (ah) ah.textContent = accent;
   if (bh) bh.textContent = bg;
   applyCustomColors(on ? accent : '', on ? bg : '');
+  const effAccent = on ? accent : currentThemeColor('--accent', '#a9cfff');
+  const effBg = on ? bg : currentThemeColor('--bg', '#05080f');
+  updateColorPreview(effAccent, effBg);
+  markActivePalette(on ? accent : '', on ? bg : '');
   const status = document.getElementById('custom-color-status');
   if (status) {
     status.textContent = on ? 'Свои цвета включены — не забудь сохранить настройки' : 'Используются цвета выбранной темы';
     status.style.color = 'var(--text-mute)';
   }
 }
-function pickCustomAccent(hex) {
+function pickPalette(chip) {
   const sw = document.getElementById('custom-colors-switch');
   const a = document.getElementById('custom-accent');
-  if (!sw || !a) return;
+  const b = document.getElementById('custom-bg');
+  if (!sw || !a || !b) return;
   if (!sw.classList.contains('on')) sw.classList.add('on');
-  a.value = hex;
+  a.value = chip.dataset.accent;
+  b.value = chip.dataset.bg;
   previewCustomColors();
+}
+function markActivePalette(accent, bg) {
+  const a = (accent || '').toLowerCase();
+  const b = (bg || '').toLowerCase();
+  document.querySelectorAll('.palette-chip').forEach(ch => {
+    const match = !!a && ch.dataset.accent.toLowerCase() === a && ch.dataset.bg.toLowerCase() === b;
+    ch.classList.toggle('active', match);
+  });
+}
+function updateColorPreview(accent, bg) {
+  const el = document.getElementById('color-preview');
+  if (!el) return;
+  const a = _hexToRgb(accent) ? accent : '#a9cfff';
+  const b = _hexToRgb(bg) ? bg : '#05080f';
+  const hi = _mixHex(a, '#ffffff', 0.7);
+  el.style.setProperty('--cp-bg', b);
+  el.style.setProperty('--cp-accent', a);
+  el.style.setProperty('--cp-hi', hi);
+  el.style.setProperty('--cp-on', _luma(hi) > 0.62 ? '#08121f' : '#ffffff');
 }
 function resetCustomColors() {
   const sw = document.getElementById('custom-colors-switch');
