@@ -1177,6 +1177,8 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px v
 .palette-chip-name { position: absolute; left: 9px; bottom: 7px; z-index: 1; font-size: 10.5px; font-weight: 800; color: #fff; letter-spacing: 0.2px; text-shadow: 0 1px 5px rgba(0,0,0,0.85); }
 .palette-chip-check { position: absolute; top: 6px; right: 6px; z-index: 1; width: 17px; height: 17px; border-radius: 50%; background: rgba(255,255,255,0.94); color: #08121f; font-size: 10px; display: none; place-items: center; font-weight: 900; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
 .palette-chip.active .palette-chip-check { display: grid; }
+.palette-chip-random { background: conic-gradient(from 210deg, #ff8a8a, #ffd479, #7bf1a8, #79d5ff, #b58bff, #ff8ad4, #ff8a8a); }
+.palette-chip-random .palette-chip-name { color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,0.9); }
 .color-preview { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: rgba(128,128,128,0.06); }
 .cp-window { border-radius: 11px; overflow: hidden; border: 1px solid rgba(255,255,255,0.12); background: var(--cp-bg, #05080f); box-shadow: inset 0 1px 0 rgba(255,255,255,0.12); }
 .cp-bar { height: 20px; background: rgba(255,255,255,0.06); display: flex; align-items: center; gap: 5px; padding: 0 9px; }
@@ -2843,17 +2845,26 @@ async function renderSettings() {
   const bgVal = _hexToRgb(cfg.custom_bg) ? cfg.custom_bg : currentThemeColor('--bg', '#05080f');
   const palettes = [
     { name: 'Лёд', accent: '#a9cfff', bg: '#05080f' },
-    { name: 'Изумруд', accent: '#34d399', bg: '#04120c' },
-    { name: 'Золото', accent: '#e6b45c', bg: '#100b04' },
-    { name: 'Фиолет', accent: '#a855f7', bg: '#120a1e' },
+    { name: 'Небо', accent: '#7dd3fc', bg: '#041018' },
     { name: 'Океан', accent: '#22d3ee', bg: '#04121a' },
-    { name: 'Закат', accent: '#fb7185', bg: '#1a0a10' },
-    { name: 'Магма', accent: '#f97316', bg: '#150804' },
-    { name: 'Роза', accent: '#f472b6', bg: '#160812' },
-    { name: 'Лаванда', accent: '#c4b5fd', bg: '#0d0b1a' },
+    { name: 'Бирюза', accent: '#2dd4bf', bg: '#03110f' },
+    { name: 'Мята', accent: '#6ee7b7', bg: '#04120e' },
+    { name: 'Изумруд', accent: '#34d399', bg: '#04120c' },
     { name: 'Матрица', accent: '#4ade80', bg: '#03110a' },
+    { name: 'Кислота', accent: '#a3e635', bg: '#0c1204' },
+    { name: 'Золото', accent: '#e6b45c', bg: '#100b04' },
+    { name: 'Магма', accent: '#f97316', bg: '#150804' },
+    { name: 'Терракота', accent: '#fb923c', bg: '#160b06' },
+    { name: 'Закат', accent: '#fb7185', bg: '#1a0a10' },
+    { name: 'Роза', accent: '#f472b6', bg: '#160812' },
+    { name: 'Сакура', accent: '#fda4af', bg: '#1a0a0e' },
+    { name: 'Неон', accent: '#e879f9', bg: '#0d0616' },
+    { name: 'Виноград', accent: '#c084fc', bg: '#140a1e' },
+    { name: 'Фиолет', accent: '#a855f7', bg: '#120a1e' },
+    { name: 'Лаванда', accent: '#c4b5fd', bg: '#0d0b1a' },
   ];
-  const paletteChips = palettes.map(p => `<button type="button" class="palette-chip" data-accent="${p.accent}" data-bg="${p.bg}" style="--pa:${p.accent};--pb:${p.bg}" onclick="pickPalette(this)"><span class="palette-chip-name">${p.name}</span><span class="palette-chip-check">✓</span></button>`).join('');
+  const paletteChips = palettes.map(p => `<button type="button" class="palette-chip" data-accent="${p.accent}" data-bg="${p.bg}" style="--pa:${p.accent};--pb:${p.bg}" onclick="pickPalette(this)"><span class="palette-chip-name">${p.name}</span><span class="palette-chip-check">✓</span></button>`).join('')
+    + `<button type="button" class="palette-chip palette-chip-random" title="Случайная палитра" onclick="pickRandomPalette()"><span class="palette-chip-name">Случайно</span></button>`;
 
   document.getElementById('content').innerHTML = `
     <div class="page-title"><span class="grad">Настройки</span></div>
@@ -3050,10 +3061,38 @@ function pickPalette(chip) {
   b.value = chip.dataset.bg;
   previewCustomColors();
 }
+function pickRandomPalette() {
+  const sw = document.getElementById('custom-colors-switch');
+  const a = document.getElementById('custom-accent');
+  const b = document.getElementById('custom-bg');
+  if (!sw || !a || !b) return;
+  const h = Math.floor(Math.random() * 360);
+  const accent = _hslToHex(h, 0.7, 0.72);
+  const bgHue = (h + 180 + (Math.floor(Math.random() * 50) - 25) + 360) % 360;
+  const bg = _hslToHex(bgHue, 0.45, 0.055);
+  if (!sw.classList.contains('on')) sw.classList.add('on');
+  a.value = accent;
+  b.value = bg;
+  previewCustomColors();
+}
+function _hslToHex(h, s, l) {
+  h = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  return _rgbToHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
+}
 function markActivePalette(accent, bg) {
   const a = (accent || '').toLowerCase();
   const b = (bg || '').toLowerCase();
-  document.querySelectorAll('.palette-chip').forEach(ch => {
+  document.querySelectorAll('.palette-chip[data-accent]').forEach(ch => {
     const match = !!a && ch.dataset.accent.toLowerCase() === a && ch.dataset.bg.toLowerCase() === b;
     ch.classList.toggle('active', match);
   });
